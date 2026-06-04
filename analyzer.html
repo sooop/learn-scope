@@ -1,0 +1,1100 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>가까이배움터 운영결과 분석</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+
+<style>
+  :root {
+    --ink: #1a2520;
+    --ink-soft: #45524b;
+    --muted: #8a948e;
+    --line: #e3e6e2;
+    --line-soft: #eef0ed;
+    --paper: #f6f5f0;
+    --card: #ffffff;
+    --accent: #1f5d50;
+    --accent-soft: #e7f0ed;
+    --accent-2: #b98a3e;
+    --danger: #a8432f;
+    --danger-soft: #f6e6e1;
+    --shadow: 0 1px 2px rgba(26,37,32,.04), 0 12px 32px -16px rgba(26,37,32,.18);
+    --radius: 14px;
+    --font: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+            'Malgun Gothic', 'Noto Sans KR', 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(31,93,80,.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(185,138,62,.05), transparent 55%),
+      var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+  #root { max-width: 1080px; margin: 0 auto; padding: 40px 22px 80px; }
+
+  .masthead { margin-bottom: 26px; }
+  .kicker {
+    font-size: 12px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 10px;
+  }
+  .title {
+    font-size: clamp(26px, 4vw, 38px); font-weight: 800;
+    letter-spacing: -.02em; margin: 0 0 8px; line-height: 1.12;
+  }
+  .subtitle { color: var(--ink-soft); font-size: 15px; max-width: 60ch; margin: 0; }
+  .rule { height: 3px; width: 52px; background: var(--accent); border-radius: 2px; margin: 18px 0 0; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+
+  /* Dropzone */
+  .drop {
+    margin-top: 26px; padding: 46px 26px; text-align: center;
+    border: 1.5px dashed var(--line); border-radius: var(--radius);
+    background: var(--card); transition: all .18s ease; cursor: pointer;
+    position: relative; overflow: hidden;
+  }
+  .drop:hover { border-color: var(--accent); }
+  .drop.drag { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+  .drop .ic {
+    width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 14px;
+    display: grid; place-items: center; background: var(--accent-soft); color: var(--accent);
+  }
+  .drop .ic svg { width: 26px; height: 26px; }
+  .drop h3 { margin: 0 0 6px; font-size: 17px; font-weight: 700; }
+  .drop p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .drop .pill {
+    display: inline-block; margin-top: 16px; font-size: 12.5px; font-weight: 600;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 6px 13px; border-radius: 999px;
+  }
+
+  /* loading */
+  .loading { margin-top: 26px; padding: 30px; display: flex; align-items: center; gap: 16px; }
+  .spinner {
+    width: 26px; height: 26px; border: 3px solid var(--line);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .8s linear infinite; flex: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading .step { font-weight: 600; font-size: 14.5px; }
+  .loading .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+  /* error */
+  .error {
+    margin-top: 20px; padding: 16px 18px; border-radius: 12px;
+    background: var(--danger-soft); border: 1px solid #ecccc2;
+    color: var(--danger); font-size: 14px; display: flex; gap: 12px; align-items: flex-start;
+  }
+  .error svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+
+  /* file bar */
+  .filebar {
+    margin-top: 26px; padding: 14px 18px; display: flex; align-items: center;
+    gap: 14px; flex-wrap: wrap;
+  }
+  .filebar .fic {
+    width: 38px; height: 38px; border-radius: 10px; background: var(--accent-soft);
+    color: var(--accent); display: grid; place-items: center; flex: none;
+  }
+  .filebar .fic svg { width: 19px; height: 19px; }
+  .filebar .fname { font-weight: 700; font-size: 14px; }
+  .filebar .fmeta { color: var(--muted); font-size: 12px; }
+  .filebar .grow { flex: 1; }
+
+  .btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    padding: 9px 15px; border-radius: 10px; font-size: 13.5px; font-weight: 600;
+    cursor: pointer; font-family: var(--font); display: inline-flex; align-items: center;
+    gap: 7px; transition: all .15s ease; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn svg { width: 16px; height: 16px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #18493f; color: #fff; }
+  .btn.primary:disabled { opacity: .55; cursor: default; }
+  .btn.ghost { background: transparent; }
+
+  /* tabs */
+  .tabs { margin-top: 28px; display: flex; gap: 6px; border-bottom: 1px solid var(--line); }
+  .tab {
+    appearance: none; border: none; background: none; font-family: var(--font);
+    padding: 12px 18px 14px; font-size: 14.5px; font-weight: 700; color: var(--muted);
+    cursor: pointer; position: relative; letter-spacing: -.01em;
+  }
+  .tab.active { color: var(--ink); }
+  .tab.active::after {
+    content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px;
+    height: 3px; background: var(--accent); border-radius: 3px;
+  }
+  .tab .cnt {
+    margin-left: 7px; font-size: 11.5px; font-weight: 700; color: var(--accent);
+    background: var(--accent-soft); padding: 2px 8px; border-radius: 999px;
+  }
+
+  .panel { margin-top: 24px; display: grid; gap: 24px; }
+
+  .stat-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .stat {
+    flex: 1; min-width: 140px; padding: 18px 20px; border-radius: 12px;
+    background: var(--card); border: 1px solid var(--line);
+  }
+  .stat .n { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+  .stat .l { color: var(--muted); font-size: 12.5px; font-weight: 600; margin-top: 2px; }
+  .stat .l b { color: var(--accent); }
+
+  .section { padding: 4px 0; }
+  .section h4 {
+    margin: 0 0 14px; font-size: 13px; font-weight: 800; letter-spacing: .03em;
+    color: var(--ink-soft); text-transform: uppercase; display: flex; align-items: center; gap: 9px;
+  }
+  .section h4::before { content: ''; width: 4px; height: 14px; background: var(--accent); border-radius: 2px; }
+
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 480px; }
+  thead th {
+    background: #fafbf9; text-align: right; padding: 11px 14px; font-weight: 700;
+    color: var(--ink-soft); border-bottom: 1px solid var(--line); white-space: nowrap; font-size: 12.5px;
+  }
+  thead th:first-child, tbody td:first-child { text-align: left; }
+  tbody td { padding: 11px 14px; text-align: right; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #fbfcfb; }
+  tbody td.sum, thead th.sum { font-weight: 800; color: var(--accent); }
+  tbody tr.total td { font-weight: 800; background: var(--accent-soft); }
+  .bar {
+    display: inline-block; vertical-align: middle; height: 6px; border-radius: 3px;
+    background: var(--accent); margin-left: 8px; min-width: 2px; opacity: .85;
+  }
+
+  /* modal */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(26,37,32,.42); backdrop-filter: blur(3px);
+    display: grid; place-items: center; padding: 20px; z-index: 50; animation: fade .15s ease;
+  }
+  @keyframes fade { from { opacity: 0; } }
+  .modal {
+    width: 100%; max-width: 440px; max-height: 84vh; display: flex; flex-direction: column;
+    background: var(--card); border-radius: 16px; box-shadow: 0 30px 70px -20px rgba(26,37,32,.5);
+    overflow: hidden; animation: pop .18s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes pop { from { transform: scale(.96) translateY(8px); opacity: 0; } }
+  .modal header { padding: 20px 22px 14px; border-bottom: 1px solid var(--line); }
+  .modal header h3 { margin: 0; font-size: 17px; font-weight: 800; }
+  .modal header p { margin: 5px 0 0; color: var(--muted); font-size: 12.5px; }
+  .modal .body { padding: 8px 22px; overflow-y: auto; }
+  .rate-row {
+    display: flex; align-items: center; gap: 14px; padding: 12px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .rate-row:last-child { border-bottom: none; }
+  .rate-row .nm { flex: 1; font-size: 13.5px; font-weight: 600; }
+  .rate-row select {
+    font-family: var(--font); font-size: 13.5px; font-weight: 700; color: var(--accent);
+    padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+  }
+  .modal footer { padding: 16px 22px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 9px; }
+
+  .empty { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
+  .footnote { margin-top: 30px; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.7; }
+  @media (max-width: 560px) {
+    .stat .n { font-size: 23px; }
+    .tab { padding: 11px 12px 13px; font-size: 13.5px; }
+  }
+</style>
+
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useRef, useEffect, useMemo } = React;
+
+/* ============================================================
+   파싱 계층 — ExcelJS 헬퍼  (porting-guide §4)
+   ============================================================ */
+function cellText(cell) {
+  return cell.text || (cell.value != null ? String(cell.value) : '');
+}
+
+function extractSheetData(workbook, sheetName, headerHint) {
+  const worksheet = workbook.getWorksheet(sheetName);
+  if (!worksheet) throw new Error(`'${sheetName}' 시트를 찾을 수 없습니다.`);
+
+  let dataStartRow = -1;
+  let headers = [];
+
+  worksheet.eachRow((row, rowNumber) => {
+    if (dataStartRow !== -1) return;
+    row.eachCell((cell) => {
+      if (cellText(cell).includes(headerHint)) {
+        dataStartRow = rowNumber;
+        row.eachCell((headerCell, colNumber) => {
+          headers[colNumber - 1] = cellText(headerCell);
+        });
+      }
+    });
+  });
+
+  if (dataStartRow === -1)
+    throw new Error(`'${sheetName}' 시트에서 '${headerHint}' 헤더를 찾을 수 없습니다.`);
+
+  // 중복 헤더 → 바로 윗 행(설명 행) 값으로 대체
+  if (dataStartRow > 1) {
+    const seen = new Set();
+    const duplicates = new Set();
+    headers.forEach(h => { if (h) { seen.has(h) ? duplicates.add(h) : seen.add(h); } });
+    if (duplicates.size > 0) {
+      const descRow = worksheet.getRow(dataStartRow - 1);
+      const descHeaders = [];
+      descRow.eachCell((cell, colNumber) => { descHeaders[colNumber - 1] = cellText(cell); });
+      headers = headers.map((h, i) =>
+        (h && duplicates.has(h) && descHeaders[i]) ? descHeaders[i] : h);
+    }
+  }
+
+  const data = [];
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= dataStartRow) return;
+    const rowData = {};
+    row.eachCell((cell, colNumber) => {
+      const header = headers[colNumber - 1];
+      if (header) {
+        let value = cell.value;
+        if (value && typeof value === 'object') {
+          if (value.richText) value = value.richText.map(t => t.text).join('');
+          else if (value.text) value = value.text;
+          else value = cell.text || String(value);
+        }
+        rowData[header] = value;
+      }
+    });
+    if (Object.keys(rowData).length > 0) data.push(rowData);
+  });
+
+  return data;
+}
+
+function toCount(value) {
+  const n = Number(String(value ?? '').trim());
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+function structureAttendanceData(rawData) {
+  return rawData.map(row => {
+    const 수업일 = toCount(row['수업일']);
+    const 출석일 = toCount(row['출석일']);
+    return {
+      연번: row['연번'], 과목명: row['과목명'], 이름: row['이름'],
+      성별: row['성별'], 생년월일: row['생년월일'],
+      수업일, 출석일,
+      출석률: 수업일 > 0 ? 출석일 / 수업일 : 0,
+      수료여부: row['수료여부']
+    };
+  }).filter(item => item.과목명 && item.이름);
+}
+
+function createDefaultCompletionRates(data, defaultRate = 0.7) {
+  const subjects = [...new Set(data.map(item => item.과목명))];
+  const rates = {};
+  subjects.forEach(subject => { rates[subject] = defaultRate; });
+  return rates;
+}
+
+/* ============================================================
+   출석 분석  (porting-guide §5)
+   ============================================================ */
+function calculateAge(birthDate) {
+  if (!birthDate) return null;
+  const dateStr = birthDate.toString().trim();
+  let parts;
+  if (dateStr.includes('.')) parts = dateStr.split('.');
+  else if (dateStr.includes('-')) parts = dateStr.split('-');
+  else return null;
+
+  const [year, month, day] = parts.map(Number);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+
+  const birth = new Date(year, month - 1, day);
+  if (birth.getFullYear() !== year || birth.getMonth() !== month - 1 || birth.getDate() !== day) return null;
+
+  const today = new Date();
+  if (birth > today) return null;
+
+  let age = today.getFullYear() - birth.getFullYear();
+  if (today.getMonth() < birth.getMonth() ||
+      (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+function getAgeGroup(age) {
+  if (age <= 19) return '19세 이하';
+  if (age < 30) return '20대';
+  if (age < 40) return '30대';
+  if (age < 50) return '40대';
+  if (age < 60) return '50대';
+  return '60대 이상';
+}
+
+const MAX_ROWS = 100000;
+
+function analyzeData(data, subjectCompletionRates) {
+  if (!data) return null;
+  if (data.length > MAX_ROWS)
+    throw new Error(`데이터가 너무 큽니다. 최대 ${MAX_ROWS.toLocaleString()}행까지 분석 가능합니다.`);
+
+  const subjectStats = {};
+  data.forEach(item => {
+    if (!subjectStats[item.과목명]) subjectStats[item.과목명] = { 수강인원: 0, 출석률합계: 0, 수료인원: 0 };
+    subjectStats[item.과목명].수강인원++;
+    subjectStats[item.과목명].출석률합계 += item.출석률;
+    const completionRate = subjectCompletionRates[item.과목명] || 0.7;
+    if (item.출석률 >= completionRate) subjectStats[item.과목명].수료인원++;
+  });
+
+  const subjectResults = Object.entries(subjectStats).map(([과목명, stats]) => ({
+    과목명,
+    수강인원: stats.수강인원,
+    평균출석률: stats.수강인원 > 0 ? (stats.출석률합계 / stats.수강인원) : 0,
+    수료인원: stats.수료인원,
+    수료율: stats.수강인원 > 0 ? (stats.수료인원 / stats.수강인원) : 0
+  }));
+
+  const genderStats = { 여성: 0, 남성: 0 };
+  data.forEach(item => {
+    if (item.성별 === '여성' || item.성별 === '여') genderStats.여성++;
+    else if (item.성별 === '남성' || item.성별 === '남') genderStats.남성++;
+  });
+  const totalStudents = data.length;
+  const genderDistribution = {
+    여성: { 명수: genderStats.여성, 비율: totalStudents > 0 ? (genderStats.여성 / totalStudents * 100) : 0 },
+    남성: { 명수: genderStats.남성, 비율: totalStudents > 0 ? (genderStats.남성 / totalStudents * 100) : 0 },
+    합계: { 명수: genderStats.여성 + genderStats.남성, 비율: totalStudents > 0 ? 100 : 0 }
+  };
+
+  const studentCourses = {};
+  data.forEach(item => {
+    const key = `${item.이름}_${item.성별}_${item.생년월일}`;
+    if (!studentCourses[key]) studentCourses[key] = { 이름: item.이름, 성별: item.성별, 생년월일: item.생년월일, 강좌수: 0, 강좌목록: [] };
+    studentCourses[key].강좌수++;
+    studentCourses[key].강좌목록.push(item.과목명);
+  });
+
+  const courseCountStats = { 1: 0, 2: 0, '3이상': 0 };
+  Object.values(studentCourses).forEach(s => {
+    if (s.강좌수 === 1) courseCountStats[1]++;
+    else if (s.강좌수 === 2) courseCountStats[2]++;
+    else courseCountStats['3이상']++;
+  });
+  const uniqueStudents = Object.keys(studentCourses).length;
+  const courseCountDistribution = {
+    '1강좌': { 명수: courseCountStats[1], 비율: uniqueStudents > 0 ? (courseCountStats[1] / uniqueStudents * 100) : 0 },
+    '2강좌': { 명수: courseCountStats[2], 비율: uniqueStudents > 0 ? (courseCountStats[2] / uniqueStudents * 100) : 0 },
+    '3강좌 이상': { 명수: courseCountStats['3이상'], 비율: uniqueStudents > 0 ? (courseCountStats['3이상'] / uniqueStudents * 100) : 0 }
+  };
+
+  const ageStats = { '19세 이하': 0, '20대': 0, '30대': 0, '40대': 0, '50대': 0, '60대 이상': 0 };
+  data.forEach(item => {
+    const age = calculateAge(item.생년월일);
+    if (age === null) return;
+    ageStats[getAgeGroup(age)]++;
+  });
+  const ageDistribution = {};
+  Object.entries(ageStats).forEach(([ageGroup, count]) => {
+    ageDistribution[ageGroup] = { 명수: count, 비율: totalStudents > 0 ? (count / totalStudents * 100) : 0 };
+  });
+
+  return { subjectResults, genderDistribution, courseCountDistribution, ageDistribution, totalStudents, uniqueStudents };
+}
+
+/* ============================================================
+   만족도 분석  (porting-guide §6)
+   ============================================================ */
+const regionMapping = {
+  통진읍: "통진읍", 고촌읍: "고촌읍", 양촌읍: "양촌읍",
+  월곶면: "월곶면", 하성면: "하성면", 대곶면: "대곶면",
+  김포본동: "김포본동", 장기본동: "장기본동", 사우동: "사우동",
+  풍무동: "풍무동", 장기동: "장기동", 구래동: "구래동",
+  마산동: "마산동", 운양동: "운양동",
+};
+const satisfactionScoreMapping = {
+  "매우 그렇다": 5, "그렇다": 4, "보통": 3, "그렇지 않다": 2, "매우 그렇지 않다": 1,
+};
+
+function normalizeText(text, category) {
+  if (!text) return "";
+  const cleanText = text.toString().toLowerCase().replace(/\s+/g, "").replace(/[.,!?]/g, "");
+
+  switch (category) {
+    case "gender":
+      if (cleanText.includes("남") || cleanText.includes("male")) return "남성";
+      if (cleanText.includes("여") || cleanText.includes("female")) return "여성";
+      break;
+    case "region": {
+      const regions = Object.keys(regionMapping);
+      for (const region of regions) {
+        if (cleanText.includes(region.replace(/\s+/g, ""))) return region;
+      }
+      return "기타지역";
+    }
+    case "age":
+      if (cleanText.includes("19") || cleanText.includes("10대") || cleanText.includes("미성년")) return "19세 이하";
+      if (cleanText.includes("20")) return "20대";
+      if (cleanText.includes("30")) return "30대";
+      if (cleanText.includes("40")) return "40대";
+      if (cleanText.includes("50")) return "50대";
+      if (cleanText.includes("60") || cleanText.includes("70") || cleanText.includes("80") || cleanText.includes("90")) return "60대 이상";
+      break;
+    case "job":
+      if (cleanText.includes("직장") || cleanText.includes("회사") || cleanText.includes("사무")) return "직장인";
+      if (cleanText.includes("자영")) return "자영업";
+      if (cleanText.includes("농업") || cleanText.includes("어업") || cleanText.includes("축산") || cleanText.includes("임업")) return "농어업축산임업";
+      if (cleanText.includes("주부") || cleanText.includes("가정")) return "주부";
+      if (cleanText.includes("학생") || cleanText.includes("대학")) return "학생";
+      return "기타";
+    case "satisfaction":
+      if (cleanText.includes("매우") && cleanText.includes("그렇다")) return "매우 그렇다";
+      if (cleanText.includes("매우") && (cleanText.includes("그렇지않다") || cleanText.includes("안다") || cleanText.includes("않다"))) return "매우 그렇지 않다";
+      if (cleanText.includes("그렇지않다") || (cleanText.includes("그렇지") && cleanText.includes("않다"))) return "그렇지 않다";
+      if (cleanText.includes("그렇다")) return "그렇다";
+      if (cleanText.includes("보통")) return "보통";
+      if (cleanText === "5") return "매우 그렇다";
+      if (cleanText === "4") return "그렇다";
+      if (cleanText === "3") return "보통";
+      if (cleanText === "2") return "그렇지 않다";
+      if (cleanText === "1") return "매우 그렇지 않다";
+      break;
+  }
+  return text;
+}
+
+const questionPatterns = [
+  "2-1.*적극", "2-2.*전문", "2-3.*충실", "2-4.*시간",
+  "2-5.*활용", "2-6.*유익", "2-7.*교재",
+  "2-8.*(시설|시섦|교육지원)", "2-9.*만족"
+];
+const satisfactionQuestions = [
+  "강사 적극성", "강사 전문성", "내용 충실성", "시간대 적정성",
+  "수업의 활용도", "수업 유익성", "교재 및 자료 충분성",
+  "강의 시설 만족도", "체감 만족도"
+];
+
+function analyzeSatisfactionData(rawData) {
+  if (!rawData || rawData.length === 0) throw new Error("분석할 데이터가 없습니다.");
+  if (rawData.length > MAX_ROWS) throw new Error(`데이터가 너무 큽니다. 최대 ${MAX_ROWS.toLocaleString()}행까지 분석 가능합니다.`);
+
+  const headers = Object.keys(rawData[0]);
+  const dataRows = rawData;
+
+  const columnIndexes = {
+    serialNumber: headers.findIndex(h => h.includes('연번')),
+    subject: headers.findIndex(h => h.includes('과목명')),
+    gender: headers.findIndex(h => /성별/i.test(h)),
+    region: headers.findIndex(h => /지역|거주|주소/i.test(h)),
+    age: headers.findIndex(h => /연령|나이/i.test(h)),
+    job: headers.findIndex(h => /직업|직종/i.test(h)),
+  };
+  if (columnIndexes.gender === -1) columnIndexes.gender = 4;
+  if (columnIndexes.region === -1) columnIndexes.region = 5;
+  if (columnIndexes.age === -1) columnIndexes.age = 6;
+  if (columnIndexes.job === -1) columnIndexes.job = 7;
+
+  const satisfactionColumnIndexes = questionPatterns.map(pattern => {
+    const regex = new RegExp(pattern, "i");
+    return headers.findIndex(header => header && regex.test(header.toString()));
+  });
+
+  const subjectGroups = {};
+  let currentSubject = null;
+  dataRows.forEach(row => {
+    let subject = row[headers[columnIndexes.subject]];
+    if (subject && subject.toString().trim() !== "") currentSubject = subject.toString().trim();
+    else if (currentSubject) subject = currentSubject;
+    if (!subject) return;
+    if (!subjectGroups[subject]) subjectGroups[subject] = [];
+    subjectGroups[subject].push(row);
+  });
+
+  const respondentCharacteristics = {};
+  const satisfactionDistribution = {};
+  const satisfactionAverages = {};
+
+  for (const [subject, rows] of Object.entries(subjectGroups)) {
+    respondentCharacteristics[subject] = {
+      subject,
+      gender: { 남성: 0, 여성: 0 },
+      region: { ...Object.fromEntries(Object.keys(regionMapping).map(k => [k, 0])), 기타지역: 0 },
+      age: { "19세 이하": 0, "20대": 0, "30대": 0, "40대": 0, "50대": 0, "60대 이상": 0 },
+      job: { "직장인": 0, "자영업": 0, "농어업축산임업": 0, "주부": 0, "학생": 0, "기타": 0 }
+    };
+    satisfactionDistribution[subject] = { subject, questions: {} };
+    satisfactionAverages[subject] = { subject, scores: {} };
+
+    rows.forEach(row => {
+      const gender = normalizeText(row[headers[columnIndexes.gender]], "gender");
+      if (gender && respondentCharacteristics[subject].gender[gender] !== undefined) respondentCharacteristics[subject].gender[gender]++;
+      const region = normalizeText(row[headers[columnIndexes.region]], "region");
+      if (region && respondentCharacteristics[subject].region[region] !== undefined) respondentCharacteristics[subject].region[region]++;
+      const age = normalizeText(row[headers[columnIndexes.age]], "age");
+      if (age && respondentCharacteristics[subject].age[age] !== undefined) respondentCharacteristics[subject].age[age]++;
+      const job = normalizeText(row[headers[columnIndexes.job]], "job");
+      if (job && respondentCharacteristics[subject].job[job] !== undefined) respondentCharacteristics[subject].job[job]++;
+    });
+
+    satisfactionQuestions.forEach((questionName, i) => {
+      const columnIndex = satisfactionColumnIndexes[i];
+      if (columnIndex === -1) return;
+      const questionResponses = { "매우 그렇다": 0, "그렇다": 0, "보통": 0, "그렇지 않다": 0, "매우 그렇지 않다": 0 };
+      let totalScore = 0, validResponses = 0;
+      rows.forEach(row => {
+        const responseText = row[headers[columnIndex]];
+        if (responseText) {
+          const normalized = normalizeText(responseText, "satisfaction");
+          if (satisfactionScoreMapping[normalized]) {
+            questionResponses[normalized]++;
+            totalScore += satisfactionScoreMapping[normalized];
+            validResponses++;
+          }
+        }
+      });
+      satisfactionDistribution[subject].questions[questionName] = questionResponses;
+      satisfactionAverages[subject].scores[questionName] = validResponses > 0 ? (totalScore / validResponses).toFixed(2) : 0;
+    });
+
+    const questionScores = Object.values(satisfactionAverages[subject].scores).map(Number);
+    satisfactionAverages[subject].scores["전체"] = questionScores.length > 0
+      ? (questionScores.reduce((a, b) => a + b, 0) / questionScores.length).toFixed(2) : 0;
+  }
+
+  return {
+    respondentCharacteristics, satisfactionDistribution, satisfactionAverages,
+    totalSubjects: Object.keys(subjectGroups).length, totalResponses: dataRows.length,
+  };
+}
+
+/* ============================================================
+   Excel 내보내기 — 4개 시트  (porting-guide §8)
+   ============================================================ */
+async function generateCombinedExcel(satisfactionResults, ExcelJS, attendanceResults = null) {
+  const workbook = new ExcelJS.Workbook();
+  const boldRow = (row) => { row.font = { bold: true }; };
+
+  // ── Sheet 1: 수강생 정보 분석 (출석 결과 있을 때만) ──
+  if (attendanceResults) {
+    const sheet = workbook.addWorksheet("수강생 정보 분석");
+    sheet.getColumn(1).width = 30;
+    [2, 3, 4, 5].forEach(c => { sheet.getColumn(c).width = c === 3 || c === 5 ? 14 : 12; });
+
+    boldRow(sheet.addRow(["■ 과목별 분석"]));
+    boldRow(sheet.addRow(["과목명", "수강인원", "평균출석률(%)", "수료인원", "수료율(%)"]));
+    attendanceResults.subjectResults.forEach(item => {
+      sheet.addRow([
+        item.과목명, item.수강인원,
+        Number((item.평균출석률 * 100).toFixed(1)),
+        item.수료인원,
+        Number((item.수료율 * 100).toFixed(1)),
+      ]);
+    });
+
+    sheet.addRow([]);
+    boldRow(sheet.addRow(["■ 성별 분포"]));
+    boldRow(sheet.addRow(["구분", "명수", "비율(%)"]));
+    ["여성", "남성", "합계"].forEach(g => {
+      const s = attendanceResults.genderDistribution[g];
+      sheet.addRow([g, s.명수, Number(s.비율.toFixed(1))]);
+    });
+
+    sheet.addRow([]);
+    boldRow(sheet.addRow([`■ 수강 강좌수별 분포 (고유 수강생 ${attendanceResults.uniqueStudents}명)`]));
+    boldRow(sheet.addRow(["구분", "명수", "비율(%)"]));
+    ["1강좌", "2강좌", "3강좌 이상"].forEach(k => {
+      const s = attendanceResults.courseCountDistribution[k];
+      sheet.addRow([k, s.명수, Number(s.비율.toFixed(1))]);
+    });
+
+    sheet.addRow([]);
+    boldRow(sheet.addRow(["■ 연령 분포"]));
+    boldRow(sheet.addRow(["구분", "명수", "비율(%)"]));
+    Object.entries(attendanceResults.ageDistribution).forEach(([g, s]) => {
+      sheet.addRow([g, s.명수, Number(s.비율.toFixed(1))]);
+    });
+  }
+
+  // ── Sheet 2: 응답자 특성 (항상) ──
+  {
+    const sheet = workbook.addWorksheet("응답자 특성");
+    const regionKeys = Object.keys(regionMapping);
+    const ageKeys = ["19세 이하", "20대", "30대", "40대", "50대", "60대 이상"];
+    const jobKeys = ["직장인", "자영업", "농어업축산임업", "주부", "학생", "기타"];
+
+    const respondentHeaders = [
+      "교육과목",
+      "성별-남", "성별-여", "성별-합계",
+      ...regionKeys, "기타지역", "지역-합계",
+      ...ageKeys, "연령-합계",
+      ...jobKeys, "직업-합계",
+    ];
+    boldRow(sheet.addRow(respondentHeaders));
+
+    Object.values(satisfactionResults.respondentCharacteristics).forEach(rc => {
+      const genderSum = rc.gender.남성 + rc.gender.여성;
+      const regionVals = regionKeys.map(k => rc.region[k] || 0);
+      const etcRegion = rc.region["기타지역"] || 0;
+      const regionSum = regionVals.reduce((a, b) => a + b, 0) + etcRegion;
+      const ageVals = ageKeys.map(k => rc.age[k] || 0);
+      const ageSum = ageVals.reduce((a, b) => a + b, 0);
+      const jobVals = jobKeys.map(k => rc.job[k] || 0);
+      const jobSum = jobVals.reduce((a, b) => a + b, 0);
+
+      sheet.addRow([
+        rc.subject,
+        rc.gender.남성, rc.gender.여성, genderSum,
+        ...regionVals, etcRegion, regionSum,
+        ...ageVals, ageSum,
+        ...jobVals, jobSum,
+      ]);
+    });
+  }
+
+  const satisfactionSubjects = Object.keys(satisfactionResults.satisfactionAverages);
+
+  // ── Sheet 3: 객관식 응답 집계 (만족도 과목 있을 때) ──
+  if (satisfactionSubjects.length > 0) {
+    const sheet = workbook.addWorksheet("객관식 응답 집계");
+    const questions = Object.keys(satisfactionResults.satisfactionAverages[satisfactionSubjects[0]].scores)
+      .filter(q => q !== "전체");
+
+    const headers = ["과목명"];
+    questions.forEach(q => headers.push(
+      `${q}-매우그렇다`, `${q}-그렇다`, `${q}-보통`, `${q}-그렇지않다`, `${q}-매우그렇지않다`, `${q}-합계`));
+    boldRow(sheet.addRow(headers));
+
+    satisfactionSubjects.forEach(subject => {
+      const dist = satisfactionResults.satisfactionDistribution[subject];
+      const row = [subject];
+      questions.forEach(q => {
+        const qd = (dist && dist.questions[q]) || { "매우 그렇다": 0, "그렇다": 0, "보통": 0, "그렇지 않다": 0, "매우 그렇지 않다": 0 };
+        const sum = qd["매우 그렇다"] + qd["그렇다"] + qd["보통"] + qd["그렇지 않다"] + qd["매우 그렇지 않다"];
+        row.push(qd["매우 그렇다"], qd["그렇다"], qd["보통"], qd["그렇지 않다"], qd["매우 그렇지 않다"], sum);
+      });
+      sheet.addRow(row);
+    });
+  }
+
+  // ── Sheet 4: 평균만족도 (만족도 과목 있을 때) ──
+  if (satisfactionSubjects.length > 0) {
+    const sheet = workbook.addWorksheet("평균만족도");
+    const questions = Object.keys(satisfactionResults.satisfactionAverages[satisfactionSubjects[0]].scores)
+      .filter(q => q !== "전체");
+    sheet.getColumn(1).width = 28;
+
+    boldRow(sheet.addRow(["과목명", "전체", ...questions]));
+    satisfactionSubjects.forEach(subject => {
+      const scores = satisfactionResults.satisfactionAverages[subject].scores;
+      sheet.addRow([subject, Number(scores["전체"]) || 0, ...questions.map(q => Number(scores[q]) || 0)]);
+    });
+  }
+
+  const excelBuffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return URL.createObjectURL(blob);
+}
+
+/* ============================================================
+   아이콘
+   ============================================================ */
+const Ic = {
+  upload: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+  file: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
+  download: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  reset: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>,
+  alert: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+};
+
+/* ============================================================
+   표시 컴포넌트
+   ============================================================ */
+function pct(x) { return (x * 100).toFixed(1) + "%"; }
+function pct100(x) { return x.toFixed(1) + "%"; }
+
+function DistTable({ title, dist, denomLabel }) {
+  const entries = Object.entries(dist);
+  const max = Math.max(...entries.map(([, v]) => v.비율), 1);
+  return (
+    <div className="section">
+      <h4>{title}{denomLabel ? ` · ${denomLabel}` : ''}</h4>
+      <div className="tbl-wrap">
+        <table>
+          <thead><tr><th>구분</th><th>명수</th><th>비율</th></tr></thead>
+          <tbody>
+            {entries.map(([k, v]) => (
+              <tr key={k}>
+                <td>{k}</td>
+                <td>{v.명수}</td>
+                <td>{pct100(v.비율)}<span className="bar" style={{ width: (v.비율 / max * 60) + 'px' }} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceResults({ analysis, onOpenModal }) {
+  if (!analysis) return null;
+  const sr = analysis.subjectResults;
+  const maxAtt = Math.max(...sr.map(s => s.평균출석률), 0.01);
+  return (
+    <div className="panel">
+      <div className="stat-row">
+        <div className="stat"><div className="n">{analysis.totalStudents}</div><div className="l">총 수강 등록 건수</div></div>
+        <div className="stat"><div className="n">{analysis.uniqueStudents}</div><div className="l">고유 수강생 수</div></div>
+        <div className="stat"><div className="n">{sr.length}</div><div className="l">개설 과목 수</div></div>
+        <div className="stat"><div className="n">{sr.reduce((a, s) => a + s.수료인원, 0)}</div><div className="l">총 <b>수료 인원</b></div></div>
+      </div>
+
+      <div className="section">
+        <h4>과목별 출석 · 수료 현황</h4>
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr><th>과목명</th><th>수강인원</th><th>평균출석률</th><th>수료인원</th><th className="sum">수료율</th></tr></thead>
+            <tbody>
+              {sr.map((item, i) => (
+                <tr key={i}>
+                  <td>{item.과목명}</td>
+                  <td>{item.수강인원}</td>
+                  <td>{pct(item.평균출석률)}<span className="bar" style={{ width: (item.평균출석률 / maxAtt * 50) + 'px' }} /></td>
+                  <td>{item.수료인원}</td>
+                  <td className="sum">{pct(item.수료율)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <DistTable title="성별 분포" dist={analysis.genderDistribution} />
+      <DistTable title="수강 강좌수별 분포" dist={analysis.courseCountDistribution} denomLabel={`고유 수강생 ${analysis.uniqueStudents}명 기준`} />
+      <DistTable title="연령 분포" dist={analysis.ageDistribution} denomLabel={`등록 건수 ${analysis.totalStudents}건 기준`} />
+    </div>
+  );
+}
+
+function SatisfactionResults({ results }) {
+  if (!results) return null;
+  const avgList = Object.values(results.satisfactionAverages);
+  if (avgList.length === 0) return <div className="empty">만족도 데이터가 없습니다.</div>;
+
+  const firstSubject = avgList[0];
+  const questions = Object.keys(firstSubject.scores).filter(q => q !== "전체");
+
+  const overallAll = avgList.map(s => Number(s.scores["전체"]) || 0);
+  const grandAvg = overallAll.length ? (overallAll.reduce((a, b) => a + b, 0) / overallAll.length) : 0;
+
+  return (
+    <div className="panel">
+      <div className="stat-row">
+        <div className="stat"><div className="n">{results.totalSubjects}</div><div className="l">설문 과목 수</div></div>
+        <div className="stat"><div className="n">{results.totalResponses}</div><div className="l">총 응답 건수</div></div>
+        <div className="stat"><div className="n">{grandAvg.toFixed(2)}</div><div className="l">전체 평균 <b>만족도</b> (5점)</div></div>
+      </div>
+
+      <div className="section">
+        <h4>과목별 평균 만족도</h4>
+        <div className="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>과목명</th>
+                <th className="sum">전체</th>
+                {questions.map(q => <th key={q}>{q}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {avgList.map((s, i) => (
+                <tr key={i}>
+                  <td>{s.subject}</td>
+                  <td className="sum">{s.scores["전체"]}</td>
+                  {questions.map(q => <td key={q}>{s.scores[q]}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="section">
+        <h4>응답자 특성 (성별 · 연령)</h4>
+        <div className="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>과목명</th><th>남</th><th>여</th>
+                <th>19↓</th><th>20대</th><th>30대</th><th>40대</th><th>50대</th><th>60↑</th>
+                <th className="sum">응답</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.values(results.respondentCharacteristics).map((rc, i) => {
+                const ageK = ["19세 이하", "20대", "30대", "40대", "50대", "60대 이상"];
+                const total = rc.gender.남성 + rc.gender.여성;
+                return (
+                  <tr key={i}>
+                    <td>{rc.subject}</td>
+                    <td>{rc.gender.남성}</td>
+                    <td>{rc.gender.여성}</td>
+                    {ageK.map(k => <td key={k}>{rc.age[k] || 0}</td>)}
+                    <td className="sum">{total}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompletionRateModal({ rates, onChange, onClose }) {
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <header>
+          <h3>과목별 수료 기준 설정</h3>
+          <p>출석률이 기준 이상이면 수료로 집계됩니다. 변경하면 출석 분석이 즉시 재계산됩니다.</p>
+        </header>
+        <div className="body">
+          {Object.entries(rates).map(([subject, rate]) => (
+            <div className="rate-row" key={subject}>
+              <span className="nm">{subject}</span>
+              <select value={Math.round(rate * 100)} onChange={e => onChange(subject, parseInt(e.target.value) / 100)}>
+                {[30, 40, 50, 60, 70, 80, 90, 100].map(p => <option key={p} value={p}>{p}%</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+        <footer><button className="btn primary" onClick={onClose}>완료</button></footer>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   메인 앱
+   ============================================================ */
+function App() {
+  const [fileName, setFileName] = useState('');
+  const [fileSize, setFileSize] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState('');
+  const [error, setErrorState] = useState('');
+  const errorTimerRef = useRef(null);
+
+  const [attendanceResult, setAttendanceResult] = useState(null);
+  const [satisfactionResult, setSatisfactionResult] = useState(null);
+  const [originalAttendanceData, setOriginalAttendanceData] = useState(null);
+  const [subjectCompletionRates, setSubjectCompletionRates] = useState({});
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [activeTab, setActiveTab] = useState('attendance');
+  const [showModal, setShowModal] = useState(false);
+
+  const fileInputRef = useRef(null);
+
+  function setError(message) {
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    setErrorState(message);
+    if (message) errorTimerRef.current = setTimeout(() => { setErrorState(''); errorTimerRef.current = null; }, 8000);
+  }
+  useEffect(() => () => { if (errorTimerRef.current) clearTimeout(errorTimerRef.current); }, []);
+
+  // 수료 기준 변경 시 출석 분석만 재실행
+  useEffect(() => {
+    if (originalAttendanceData && Object.keys(subjectCompletionRates).length > 0) {
+      setAttendanceResult(analyzeData(originalAttendanceData, subjectCompletionRates));
+    }
+  }, [subjectCompletionRates, originalAttendanceData]);
+
+  async function processExcelFile(file) {
+    setLoading(true); setLoadingStep('파일 읽는 중...'); setError('');
+    setAttendanceResult(null); setSatisfactionResult(null); setOriginalAttendanceData(null);
+
+    try {
+      const MAX_FILE_SIZE = 50 * 1024 * 1024;
+      if (file.size > MAX_FILE_SIZE) throw new Error('파일 크기가 너무 큽니다. 최대 50MB까지 업로드 가능합니다.');
+
+      setFileName(file.name); setFileSize(file.size);
+
+      const buffer = await file.arrayBuffer();
+
+      setLoadingStep('Excel 파일 파싱 중...');
+      const ExcelJS = window.ExcelJS;
+      if (!ExcelJS) throw new Error('ExcelJS 라이브러리를 불러오지 못했습니다. 네트워크 연결을 확인하세요.');
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+
+      setLoadingStep('시트 확인 중...');
+      const attendanceSheetName = workbook.worksheets.find(ws => /^(\d+\.\s*)?개인별\s?출석현황$/.test(ws.name.trim()))?.name;
+      const satisfactionSheetName = workbook.worksheets.find(ws => /^(\d+\.\s*)?원본데이(?:터|타)$/.test(ws.name.trim()))?.name;
+      if (!attendanceSheetName || !satisfactionSheetName)
+        throw new Error('필수 시트를 찾을 수 없습니다. 파일에 "개인별 출석현황"과 "원본데이터" 시트가 있는지 확인하세요.');
+
+      setLoadingStep('출석 데이터 추출 중...');
+      const attendanceRawData = extractSheetData(workbook, attendanceSheetName, '연번');
+      setLoadingStep('만족도 데이터 추출 중...');
+      const satisfactionRawData = extractSheetData(workbook, satisfactionSheetName, '연번');
+
+      setLoadingStep('데이터 구조화 중...');
+      const structuredAttendance = structureAttendanceData(attendanceRawData);
+      const defaultRates = createDefaultCompletionRates(structuredAttendance);
+
+      setLoadingStep('데이터 분석 중...');
+      const attendanceAnalysis = analyzeData(structuredAttendance, defaultRates);
+      const satisfactionAnalysis = analyzeSatisfactionData(satisfactionRawData);
+
+      setOriginalAttendanceData(structuredAttendance);
+      setSubjectCompletionRates(defaultRates);
+      setAttendanceResult(attendanceAnalysis);
+      setSatisfactionResult(satisfactionAnalysis);
+      setActiveTab('attendance');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false); setLoadingStep('');
+    }
+  }
+
+  async function handleDownload() {
+    if (!satisfactionResult || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const url = await generateCombinedExcel(satisfactionResult, window.ExcelJS, attendanceResult);
+      if (url) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = '통합_분석결과.xlsx';
+        link.rel = 'noopener';
+        document.body.appendChild(link);   // 샌드박스 iframe에서 클릭이 무시되지 않도록 DOM에 부착
+        link.click();
+        // 다운로드가 시작될 시간을 준 뒤 정리 (즉시 revoke 하면 다운로드가 취소됨)
+        setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 4000);
+      }
+    } catch (err) {
+      setError('Excel 생성 실패: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  function reset() {
+    setFileName(''); setFileSize(0);
+    setAttendanceResult(null); setSatisfactionResult(null); setOriginalAttendanceData(null);
+    setSubjectCompletionRates({}); setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  const hasResult = attendanceResult || satisfactionResult;
+  const fmtSize = (b) => b < 1024 * 1024 ? (b / 1024).toFixed(0) + ' KB' : (b / 1024 / 1024).toFixed(1) + ' MB';
+
+  return (
+    <div>
+      <div className="masthead">
+        <div className="kicker">평생학습 운영결과 분석</div>
+        <h1 className="title">가까이배움터 강좌 운영결과 분석기</h1>
+        <p className="subtitle">출석현황과 만족도 설문 원본이 담긴 엑셀 파일을 올리면, 출석·수료 분석과 만족도 집계를 자동으로 수행하고 4개 시트로 구성된 결과 파일을 내려받을 수 있습니다.</p>
+        <div className="rule" />
+      </div>
+
+      {error && (
+        <div className="error">{Ic.alert}<span>{error}</span></div>
+      )}
+
+      {!hasResult && !loading && (
+        <div
+          className={'drop' + (isDragging ? ' drag' : '')}
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer?.files?.[0]; if (f) processExcelFile(f); }}
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+        >
+          <div className="ic">{Ic.upload}</div>
+          <h3>엑셀 파일을 드래그하거나 클릭하여 업로드</h3>
+          <p>.xlsx · .xls 형식 · 최대 50MB</p>
+          <div className="pill">개인별 출석현황 + 원본데이터 시트 필요</div>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls"
+            style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) processExcelFile(f); }} />
+        </div>
+      )}
+
+      {loading && (
+        <div className="card loading">
+          <div className="spinner" />
+          <div>
+            <div className="step">{loadingStep || '처리 중...'}</div>
+            <div className="sub">{fileName || '파일을 분석하고 있습니다'}</div>
+          </div>
+        </div>
+      )}
+
+      {hasResult && !loading && (
+        <>
+          <div className="card filebar">
+            <div className="fic">{Ic.file}</div>
+            <div>
+              <div className="fname">{fileName}</div>
+              <div className="fmeta">{fmtSize(fileSize)} · 분석 완료</div>
+            </div>
+            <div className="grow" />
+            <button className="btn ghost" onClick={() => setShowModal(true)}>{Ic.settings}수료 기준</button>
+            <button className="btn ghost" onClick={reset}>{Ic.reset}새 파일</button>
+            <button className="btn primary" onClick={handleDownload} disabled={isDownloading}>
+              {Ic.download}{isDownloading ? '생성 중...' : '결과 파일 (4시트) 다운로드'}
+            </button>
+          </div>
+
+          <div className="tabs">
+            <button className={'tab' + (activeTab === 'attendance' ? ' active' : '')} onClick={() => setActiveTab('attendance')}>
+              출석 · 수료 분석{attendanceResult && <span className="cnt">{attendanceResult.subjectResults.length}</span>}
+            </button>
+            <button className={'tab' + (activeTab === 'satisfaction' ? ' active' : '')} onClick={() => setActiveTab('satisfaction')}>
+              만족도 분석{satisfactionResult && <span className="cnt">{satisfactionResult.totalSubjects}</span>}
+            </button>
+          </div>
+
+          {activeTab === 'attendance'
+            ? <AttendanceResults analysis={attendanceResult} onOpenModal={() => setShowModal(true)} />
+            : <SatisfactionResults results={satisfactionResult} />}
+        </>
+      )}
+
+      {showModal && (
+        <CompletionRateModal
+          rates={subjectCompletionRates}
+          onChange={(subject, rate) => setSubjectCompletionRates(prev => ({ ...prev, [subject]: rate }))}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+
+      <div className="footnote">
+        모든 분석은 브라우저 내에서만 처리되며 파일은 외부로 전송되지 않습니다.<br/>
+        결과 파일 시트: 수강생 정보 분석 · 응답자 특성 · 객관식 응답 집계 · 평균만족도
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
