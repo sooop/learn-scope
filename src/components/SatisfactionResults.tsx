@@ -23,7 +23,7 @@ export function SatisfactionResults({ results }: SatisfactionResultsProps) {
     ? overallAll.reduce((a, b) => a + b, 0) / overallAll.length
     : 0;
 
-  const subjectMerges: SubjectMerge[] | undefined = results.subjectMerges;
+  const subjectMerges: SubjectMerge[] | undefined = results.subjectMerges as SubjectMerge[] | undefined;
 
   return (
     <div className="panel">

@@ -1,17 +1,29 @@
 import type ExcelJS from 'exceljs';
-import type { AttendanceAnalysis, SatisfactionAnalysis } from '../types/analysis';
-import { regionMapping } from './satisfaction-analyzer';
+import type {
+  AttendanceAnalysis,
+  SatisfactionAnalysis,
+  StructuredAttendanceItem,
+  Diagnostic,
+} from '../types/analysis';
+import { regionMapping, satisfactionQuestions } from './satisfaction-analyzer';
 import { AGE_KEYS, JOB_KEYS, createEmptyQuestionDistribution } from './constants';
 import { findCategory } from './subject-utils';
 
 /* ================================================================
-   Excel 내보내기 — 4개 시트  (analyzer.html:586-709)
+   Excel 내보내기 — 5개 시트  (analyzer.html:586-709)
    ================================================================ */
 
 export async function generateCombinedExcel(
   satisfactionResults: SatisfactionAnalysis,
   ExcelJSLib: typeof ExcelJS,
   attendanceResults: AttendanceAnalysis | null = null,
+  originalAttendanceData?: StructuredAttendanceItem[] | null,
+  diagnostics?: Diagnostic[],
+  meta?: {
+    subjectCompletionRates?: Record<string, number>;
+    parsedAttendanceRows?: number;
+    parsedSatisfactionRows?: number;
+  },
 ): Promise<string> {
   const workbook = new ExcelJSLib.Workbook();
   const boldRow = (row: ExcelJS.Row) => {
@@ -74,8 +86,13 @@ export async function generateCombinedExcel(
     boldRow(sheet.addRow(['구분', '명수', '비율(%)']));
     (['여성', '남성', '합계'] as const).forEach((g) => {
       const s = attendanceResults.genderDistribution[g];
-      sheet.addRow([g, s.명수, Number(s.비율.toFixed(1))]);
+      if (s) sheet.addRow([g, s.명수, Number(s.비율.toFixed(1))]);
     });
+    // '기타/미상' 버킷이 있으면 추가
+    if (attendanceResults.genderDistribution['기타/미상']) {
+      const s = attendanceResults.genderDistribution['기타/미상'];
+      sheet.addRow(['기타/미상', s.명수, Number(s.비율.toFixed(1))]);
+    }
 
     sheet.addRow([]);
     boldRow(
@@ -145,12 +162,26 @@ export async function generateCombinedExcel(
 
   const satisfactionSubjects = Object.keys(satisfactionResults.satisfactionAverages);
 
+  // E2: 전 과목 문항 키 합집합 — 첫 과목 기준 누락 방지
+  const buildQuestions = (): string[] => {
+    const questionSet = new Set<string>();
+    satisfactionSubjects.forEach((subject) => {
+      Object.keys(satisfactionResults.satisfactionAverages[subject].scores)
+        .filter((q) => q !== '전체')
+        .forEach((q) => questionSet.add(q));
+    });
+    // 표준 순서로 정렬 (satisfactionQuestions에 없는 키는 뒤에 추가)
+    const ordered = satisfactionQuestions.filter((q) => questionSet.has(q));
+    questionSet.forEach((q) => {
+      if (!ordered.includes(q)) ordered.push(q);
+    });
+    return ordered;
+  };
+
   // ── Sheet 3: 객관식 응답 집계 (만족도 과목 있을 때) ──
   if (satisfactionSubjects.length > 0) {
     const sheet = workbook.addWorksheet('객관식 응답 집계');
-    const questions = Object.keys(
-      satisfactionResults.satisfactionAverages[satisfactionSubjects[0]].scores,
-    ).filter((q) => q !== '전체');
+    const questions = buildQuestions();
 
     const headerRow = ['과목명'];
     questions.forEach((q) =>
@@ -188,9 +219,7 @@ export async function generateCombinedExcel(
   // ── Sheet 4: 평균만족도 (만족도 과목 있을 때) ──
   if (satisfactionSubjects.length > 0) {
     const sheet = workbook.addWorksheet('평균만족도');
-    const questions = Object.keys(
-      satisfactionResults.satisfactionAverages[satisfactionSubjects[0]].scores,
-    ).filter((q) => q !== '전체');
+    const questions = buildQuestions();
     sheet.getColumn(1).width = 28;
 
     boldRow(sheet.addRow(['구분', '과목명', '전체', ...questions]));
@@ -203,6 +232,98 @@ export async function generateCombinedExcel(
         ...questions.map((q) => Number(avg.scores[q]) || 0),
       ]);
     });
+  }
+
+  // ── Sheet 5: 검증 (originalAttendanceData 있을 때) ──
+  if (originalAttendanceData && originalAttendanceData.length > 0) {
+    const sheet = workbook.addWorksheet('검증');
+    sheet.getColumn(1).width = 18;
+    sheet.getColumn(2).width = 18;
+    sheet.getColumn(3).width = 14;
+    sheet.getColumn(4).width = 14;
+    sheet.getColumn(5).width = 12;
+    sheet.getColumn(6).width = 10;
+    sheet.getColumn(7).width = 10;
+    sheet.getColumn(8).width = 12;
+    sheet.getColumn(9).width = 12;
+
+    // (a) 검증 요약
+    boldRow(sheet.addRow(['■ 검증 요약']));
+    const parsedAttRows = meta?.parsedAttendanceRows;
+    const parsedSatRows = meta?.parsedSatisfactionRows;
+    const skipped =
+      parsedAttRows != null ? parsedAttRows - originalAttendanceData.length : null;
+    sheet.addRow(['파싱된 출석 원시 행 수', parsedAttRows ?? '—']);
+    sheet.addRow(['구조화 출석 행 수', originalAttendanceData.length]);
+    sheet.addRow(['스킵된 행 수 (과목명/이름 누락)', skipped ?? '—']);
+    sheet.addRow(['파싱된 만족도 응답 수', parsedSatRows ?? '—']);
+    if (attendanceResults) {
+      sheet.addRow(['분석 과목 수', attendanceResults.subjectResults.length]);
+    }
+    sheet.addRow([]);
+
+    // (b) 진단 목록
+    boldRow(sheet.addRow(['■ 진단 결과']));
+    if (!diagnostics || diagnostics.length === 0) {
+      sheet.addRow(['이상 없음']);
+    } else {
+      boldRow(sheet.addRow(['심각도', '코드', '카테고리', '메시지', '건수', '샘플']));
+      diagnostics.forEach((d) => {
+        sheet.addRow([
+          d.severity === 'warning' ? '경고' : '정보',
+          d.code,
+          d.category,
+          d.message,
+          d.count,
+          (d.samples ?? []).join(' | '),
+        ]);
+      });
+    }
+    sheet.addRow([]);
+
+    // (c) 출석 원본 대조
+    const rates = meta?.subjectCompletionRates ?? {};
+    const VERIFY_ROW_CAP = 50000;
+    const dataToExport = originalAttendanceData.slice(0, VERIFY_ROW_CAP);
+
+    boldRow(sheet.addRow(['■ 출석 원본 대조']));
+    boldRow(
+      sheet.addRow([
+        '과목명',
+        '이름',
+        '성별',
+        '생년월일',
+        '수업일',
+        '출석일',
+        '출석률(%)',
+        '수료여부판정',
+        '연번',
+      ]),
+    );
+    dataToExport.forEach((item) => {
+      const rate = rates[item.과목명] ?? 0.7;
+      // C4: epsilon 비교 (analyzeData와 동일 로직)
+      const passed = item.출석률 >= rate - 1e-9;
+      sheet.addRow([
+        item.과목명,
+        item.이름,
+        item.성별,
+        item.생년월일,
+        item.수업일,
+        item.출석일,
+        Number((item.출석률 * 100).toFixed(1)),
+        passed ? '수료' : '미수료',
+        String(item.연번 ?? ''),
+      ]);
+    });
+
+    if (originalAttendanceData.length > VERIFY_ROW_CAP) {
+      boldRow(
+        sheet.addRow([
+          `… 이하 ${originalAttendanceData.length - VERIFY_ROW_CAP}행 생략 (총 ${originalAttendanceData.length}행)`,
+        ]),
+      );
+    }
   }
 
   const excelBuffer = await workbook.xlsx.writeBuffer();

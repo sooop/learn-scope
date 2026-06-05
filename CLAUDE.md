@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 개요
 
-김포시 가까이배움터 강좌 운영결과 분석기. 엑셀 파일을 브라우저에서 파싱하여 출석·수료 분석과 만족도 집계를 수행하고, 분석 결과를 4개 시트 xlsx로 내보낸다. **최종 산출물은 단일 HTML 파일**이다.
+김포시 가까이배움터 강좌 운영결과 분석기. 엑셀 파일을 브라우저에서 파싱하여 출석·수료 분석과 만족도 집계를 수행하고, 분석 결과를 5개 시트 xlsx로 내보낸다. **최종 산출물은 단일 HTML 파일**이다.
 
 ## 명령어
 
@@ -31,12 +31,15 @@ npm run preview    # dist/ 빌드 결과 미리보기
 File 업로드
   → extractSheetData() [excel-parser.ts]  — ExcelJS로 시트 파싱, 헤더 동적 탐지
   ├→ structureAttendanceData()            — 출석 시트 구조화 + 출석률(0~1) 계산
-  │    analyzeData()  [attendance-analyzer.ts]  → AttendanceAnalysis
-  └→ analyzeSatisfactionData() [satisfaction-analyzer.ts] → SatisfactionAnalysis
+  │    → { items, diagnostics: parseDiag }  (StructuredAttendanceResult)
+  │    analyzeData()  [attendance-analyzer.ts]  → AttendanceAnalysis (diagnostics 포함)
+  └→ analyzeSatisfactionData() [satisfaction-analyzer.ts] → SatisfactionAnalysis (diagnostics 포함)
                                               ↓
-                            화면 표시 (AttendanceResults / SatisfactionResults)
+          DiagnosticsPanel (파싱+분석 진단 합산, 진단 수 0건이면 "이상 없음")
+          화면 표시 (AttendanceResults / SatisfactionResults / DataPreview)
                                               ↓ (다운로드 클릭)
-                            generateCombinedExcel() [excel-exporter.ts] → Blob URL
+          generateCombinedExcel() [excel-exporter.ts] → Blob URL
+          (5개 시트: 수강생 정보 분석 / 응답자 특성 / 객관식 응답 집계 / 평균만족도 / 검증)
 ```
 
 분석 함수는 모두 **순수 함수**이며 ExcelJS에 의존하지 않는다. ExcelJS 의존성은 파싱(`excel-parser.ts`)과 내보내기(`excel-exporter.ts`)에만 있다.
@@ -49,9 +52,13 @@ File 업로드
 
 `analyzeData(data, rates, splitSixties)` 3번째 인자로 전달. 토글이 바뀌면 `useEffect`가 출석 분석만 재실행한다. `AttendanceAnalysis.ageDistribution`은 `Record<string, DistributionEntry>`(동적 키)이므로 표시(`DistTable`)·내보내기(`excel-exporter` Sheet1) 모두 변경 없이 자동 반영된다.
 
-### 출석률 칼럼 폴백 (`structureAttendanceData`)
+### 출석률 형식 자동탐지 (`structureAttendanceData`)
 
-어떤 행의 `출석일`이 공란이면 `출석률` 칼럼 값으로 대체한다. 칼럼 전체를 1회 스캔하여 1 초과 값이 하나라도 있으면 **백분율 형식(0~100 → /100)**, 없으면 **비율 형식(0~1 그대로)** 으로 처리. 내부 출석률은 항상 0~1 비율로 통일된다.
+칼럼 전체를 1회 스캔하여 **1 초과 값의 비중 ≥ 50% 또는 중앙값 > 1**이면 백분율 형식(0~100 → /100), 그 외는 비율 형식(0~1 그대로). 내부 출석률은 항상 0~1 비율로 통일된다.
+
+이전 휴리스틱(`any > 1`)은 단 1개 잘못된 셀만 있어도 전체 형식을 오판하는 문제가 있었음. 현행 과반수/중앙값 방식이 훨씬 견고하다. 형식 판정 결과는 `B1-rate-format` 진단으로 기록되며, 판정 형식과 어긋나는 모호한 값은 `B1-rate-ambiguous` 경고로 표면화된다.
+
+`structureAttendanceData()`는 이제 `StructuredAttendanceItem[]` 대신 `{ items: StructuredAttendanceItem[]; diagnostics: Diagnostic[] }` (`StructuredAttendanceResult`)를 반환한다. 호출부는 `App.tsx` 한 곳이며 반드시 구조 분해해야 한다.
 
 ### 비율 단위 비대칭 — 가장 흔한 버그
 

@@ -1,5 +1,6 @@
 import type { AttendanceAnalysis, StructuredAttendanceItem } from '../types/analysis';
 import { MAX_ROWS, AGE_KEYS, AGE_KEYS_SPLIT } from './constants';
+import { DiagnosticCollector } from './diagnostics';
 
 /* ================================================================
    출석 분석  (analyzer.html:315-416)
@@ -64,6 +65,14 @@ function getAgeGroup(age: number, splitSixties = false): string {
   return '60대 이상';
 }
 
+// C1: trim+소문자 정규화 — 표기 변형(남자/男/M) 흡수
+function normalizeGender(raw: string): '남성' | '여성' | null {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, '');
+  if (s.includes('남') || s.includes('male') || s === 'm') return '남성';
+  if (s.includes('여') || s.includes('female') || s === 'f') return '여성';
+  return null;
+}
+
 export function analyzeData(
   data: StructuredAttendanceItem[],
   subjectCompletionRates: Record<string, number>,
@@ -75,6 +84,8 @@ export function analyzeData(
       `데이터가 너무 큽니다. 최대 ${MAX_ROWS.toLocaleString()}행까지 분석 가능합니다.`,
     );
 
+  const dc = new DiagnosticCollector();
+
   // ── 1. 과목별 기본 분석 ──────────────────────────────────────────────
   const subjectStats: Record<string, { 수강인원: number; 출석률합계: number; 수료인원: number }> =
     {};
@@ -84,7 +95,8 @@ export function analyzeData(
     subjectStats[item.과목명].수강인원++;
     subjectStats[item.과목명].출석률합계 += item.출석률;
     const completionRate = subjectCompletionRates[item.과목명] ?? 0.7;
-    if (item.출석률 >= completionRate) subjectStats[item.과목명].수료인원++;
+    // C4: epsilon 비교로 부동소수점 경계 오분류 방지
+    if (item.출석률 >= completionRate - 1e-9) subjectStats[item.과목명].수료인원++;
   });
 
   const subjectResults = Object.entries(subjectStats).map(([과목명, stats]) => ({
@@ -96,11 +108,26 @@ export function analyzeData(
   }));
 
   // ── 2. 성별 분포 ──────────────────────────────────────────────────────
-  const genderStats = { 여성: 0, 남성: 0 };
+  // C1: 관대한 정규화 + 미매칭은 '기타/미상' 버킷으로 표면화
+  const genderStats = { 여성: 0, 남성: 0, '기타/미상': 0 };
   data.forEach((item) => {
-    if (item.성별 === '여성' || item.성별 === '여') genderStats.여성++;
-    else if (item.성별 === '남성' || item.성별 === '남') genderStats.남성++;
+    const normalized = normalizeGender(item.성별 || '');
+    if (normalized) {
+      genderStats[normalized]++;
+    } else {
+      genderStats['기타/미상']++;
+      if (item.성별) {
+        dc.add(
+          'C1-gender-unmatched',
+          'warning',
+          'normalize-failed',
+          '인식할 수 없는 성별 값이 기타/미상으로 분류됨',
+          String(item.성별),
+        );
+      }
+    }
   });
+
   const totalStudents = data.length;
   const genderDistribution: AttendanceAnalysis['genderDistribution'] = {
     여성: {
@@ -111,10 +138,18 @@ export function analyzeData(
       명수: genderStats.남성,
       비율: totalStudents > 0 ? (genderStats.남성 / totalStudents) * 100 : 0,
     },
-    합계: {
-      명수: genderStats.여성 + genderStats.남성,
-      비율: totalStudents > 0 ? 100 : 0,
-    },
+  };
+  // '기타/미상' 버킷은 해당 인원이 있을 때만 추가
+  if (genderStats['기타/미상'] > 0) {
+    genderDistribution['기타/미상'] = {
+      명수: genderStats['기타/미상'],
+      비율: totalStudents > 0 ? (genderStats['기타/미상'] / totalStudents) * 100 : 0,
+    };
+  }
+  const genderTotal = genderStats.여성 + genderStats.남성 + genderStats['기타/미상'];
+  genderDistribution['합계'] = {
+    명수: genderTotal,
+    비율: totalStudents > 0 ? (genderTotal / totalStudents) * 100 : 0,
   };
 
   // ── 3. 수강 강좌수별 분포 ─────────────────────────────────────────────
@@ -164,7 +199,10 @@ export function analyzeData(
   let unknownAge = 0;
   data.forEach((item) => {
     const age = calculateAge(item.생년월일);
-    if (age === null) { unknownAge++; return; }
+    if (age === null) {
+      unknownAge++;
+      return;
+    }
     ageStats[getAgeGroup(age, splitSixties)]++;
   });
   const ageDistribution: AttendanceAnalysis['ageDistribution'] = {};
@@ -181,6 +219,29 @@ export function analyzeData(
     };
   }
 
+  // ── 5. 버킷 합 교차검증 ───────────────────────────────────────────────
+  const genderBucketSum = Object.entries(genderDistribution)
+    .filter(([k]) => k !== '합계')
+    .reduce((s, [, v]) => s + v.명수, 0);
+  if (genderBucketSum !== totalStudents) {
+    dc.add(
+      'INTEGRITY-gender-sum',
+      'warning',
+      'bucket-mismatch',
+      `성별 분포 버킷 합(${genderBucketSum})이 전체 수강인원(${totalStudents})과 불일치`,
+    );
+  }
+
+  const ageBucketSum = Object.values(ageDistribution).reduce((s, v) => s + v.명수, 0);
+  if (ageBucketSum !== totalStudents) {
+    dc.add(
+      'INTEGRITY-age-sum',
+      'warning',
+      'bucket-mismatch',
+      `연령 분포 버킷 합(${ageBucketSum})이 전체 수강인원(${totalStudents})과 불일치`,
+    );
+  }
+
   return {
     subjectResults,
     genderDistribution,
@@ -188,5 +249,6 @@ export function analyzeData(
     ageDistribution,
     totalStudents,
     uniqueStudents,
+    diagnostics: dc.build(),
   };
 }

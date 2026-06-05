@@ -11,6 +11,8 @@ import { analyzeData } from '../lib/attendance-analyzer';
 import { analyzeSatisfactionData } from '../lib/satisfaction-analyzer';
 import { generateCombinedExcel } from '../lib/excel-exporter';
 import { clusterSubjects } from '../lib/subject-cluster';
+import { DiagnosticCollector } from '../lib/diagnostics';
+import { findCategory } from '../lib/subject-utils';
 import { AttendanceResults } from './AttendanceResults';
 import { SatisfactionResults } from './SatisfactionResults';
 import { CompletionRateModal } from './CompletionRateModal';
@@ -119,12 +121,15 @@ export function App() {
         );
 
       setLoadingStep('출석 데이터 추출 중...');
-      const attendanceRawData: RawRow[] = extractSheetData(workbook, attendanceSheetName, '연번');
+      // P1 진단 수집기: 두 extractSheetData 호출에서 공유 (수식 캐시 없는 셀 감지)
+      const parseDc = new DiagnosticCollector();
+      const attendanceRawData: RawRow[] = extractSheetData(workbook, attendanceSheetName, '연번', parseDc);
       setLoadingStep('만족도 데이터 추출 중...');
       const satRawData: RawRow[] = extractSheetData(
         workbook,
         satisfactionSheetName,
         '연번',
+        parseDc,
       );
 
       setLoadingStep('데이터 구조화 중...');
@@ -150,8 +155,8 @@ export function App() {
         : {};
       const satisfactionAnalysis = analyzeSatisfactionData(satRawData, externalCategories);
 
-      // 진단 + 원본 데이터 상태 업데이트
-      setParseDiagnostics(parseDiag);
+      // 진단 + 원본 데이터 상태 업데이트 (P1 파서 진단 + 구조화 진단 합산)
+      setParseDiagnostics([...parseDc.build(), ...parseDiag]);
       setSatisfactionRawData(satRawData);
       setParsedAttendanceRows(attendanceRawData.length);
       setAttendanceMergesState(attendanceMerges);
@@ -226,14 +231,32 @@ export function App() {
   }
 
   // 파싱 + 분석 진단을 합산 (토글/수료기준 변경 시 분석 진단만 자동 갱신됨)
-  const allDiagnostics = useMemo(
-    () => [
+  const allDiagnostics = useMemo(() => {
+    const base: (typeof parseDiagnostics) = [
       ...parseDiagnostics,
       ...(attendanceResult?.diagnostics ?? []),
       ...(satisfactionResult?.diagnostics ?? []),
-    ],
-    [parseDiagnostics, attendanceResult?.diagnostics, satisfactionResult?.diagnostics],
-  );
+    ];
+
+    // 구분 매칭 실패 파생 진단: 출석 시트 과목명이 요약 시트와 달라 구분 특정 불가
+    const cats = satisfactionResult?.subjectCategories ?? {};
+    if (attendanceResult && Object.keys(cats).length > 0) {
+      const failed = attendanceResult.subjectResults
+        .map((sr) => sr.과목명)
+        .filter((name) => !findCategory(name, cats));
+      if (failed.length > 0) {
+        base.push({
+          severity: 'warning',
+          category: 'normalize-failed',
+          code: 'CAT-match-failed',
+          message: '구분(카테고리) 매칭 실패 — 출석 시트 과목명이 요약 시트 표기와 달라 구분을 특정할 수 없음',
+          count: failed.length,
+          samples: failed.slice(0, 5),
+        });
+      }
+    }
+    return base;
+  }, [parseDiagnostics, attendanceResult, satisfactionResult]);
 
   const hasResult = attendanceResult || satisfactionResult;
 

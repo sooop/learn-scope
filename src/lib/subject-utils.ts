@@ -3,6 +3,22 @@
    ================================================================ */
 import { fuzzyDistance, decomposeHangul } from './jamo';
 
+// ── bigram Dice 유사도 (5단계 폴백용) ────────────────────────────────
+function bigrams(s: string): Set<string> {
+  const set = new Set<string>();
+  for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+  return set;
+}
+
+function diceSimilarity(a: string, b: string): number {
+  const A = bigrams(a);
+  const B = bigrams(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const g of A) if (B.has(g)) inter++;
+  return (2 * inter) / (A.size + B.size);
+}
+
 export function normalizeForMatch(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, '').replace(/[^\w가-힣]/g, '');
 }
@@ -56,5 +72,26 @@ export function findCategory(subject: string, categories: Record<string, string>
       fuzzyBest = v;
     }
   }
-  return fuzzyBest;
+  if (fuzzyBest) return fuzzyBest;
+
+  // 5단계: bigram Dice — 자모 거리로 구제 불가한 단어 수준 의역·문구 변형 흡수
+  // 조건: 1위 ≥ 0.4 && (1위 − 2위) ≥ 0.1 (유사한 후보가 없을 때만 채택)
+  if (norm.length >= 5) {
+    let diceTop = 0,
+      diceSecond = 0,
+      diceBestV = '';
+    for (const [k, v] of Object.entries(categories)) {
+      const score = diceSimilarity(norm, normalizeForMatch(k));
+      if (score > diceTop) {
+        diceSecond = diceTop;
+        diceTop = score;
+        diceBestV = v;
+      } else if (score > diceSecond) {
+        diceSecond = score;
+      }
+    }
+    if (diceTop >= 0.4 && diceTop - diceSecond >= 0.1) return diceBestV;
+  }
+
+  return '';
 }
