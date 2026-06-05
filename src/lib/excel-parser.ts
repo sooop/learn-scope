@@ -68,6 +68,10 @@ export function extractSheetData(
           const v = value as Record<string, unknown>;
           if (v.richText) {
             value = (v.richText as Array<{ text: string }>).map((t) => t.text).join('');
+          } else if ('result' in v) {
+            // 수식 셀: { formula: '...', result: 10 } — result를 직접 사용
+            // cell.text는 캐시가 없으면 빈 문자열이 되어 '[object Object]'로 오염될 수 있음
+            value = v.result ?? cell.text;
           } else if (v.text) {
             value = v.text;
           } else {
@@ -102,9 +106,10 @@ function isBlank(v: unknown): boolean {
 }
 
 export function structureAttendanceData(rawData: RawRow[]): StructuredAttendanceItem[] {
-  // 출석률 칼럼 형식 1회 탐지 (출석일 공란 대비)
+  // 출석률 칼럼 형식 탐지 — 출석률 값이 있는 행 기준
   // 1을 초과하는 값이 하나라도 있으면 백분율 형식(0~100), 없으면 비율 형식(0~1)
   const rateNums = rawData
+    .filter((r) => !isBlank(r['출석률']))
     .map((r) => parseRateCell(r['출석률']))
     .filter((n): n is number => n != null);
   const isPercentFormat = rateNums.some((n) => n > 1);
@@ -112,18 +117,21 @@ export function structureAttendanceData(rawData: RawRow[]): StructuredAttendance
   return rawData
     .map((row) => {
       const 수업일 = toCount(row['수업일']);
-      let 출석일 = toCount(row['출석일']);
+      let 출석일: number;
       let 출석률: number;
 
-      if (!isBlank(row['출석일'])) {
-        // 출석일 있음 → 기존 로직
-        출석률 = 수업일 > 0 ? 출석일 / 수업일 : 0;
-      } else {
-        // 출석일 공란 → 출석률 칼럼 폴백 + 형식 휴리스틱
+      if (!isBlank(row['출석률'])) {
+        // 출석률 칼럼 우선 — 엑셀에 기록된 공식 출석률을 직접 사용
         const raw = parseRateCell(row['출석률']);
-        출석률 = raw == null ? 0 : isPercentFormat ? raw / 100 : raw;
-        // 출석일을 출석률에서 역산 (내부 일관성 유지)
-        출석일 = 수업일 > 0 ? Math.round(출석률 * 수업일) : 0;
+        출석률 = Math.min(raw == null ? 0 : isPercentFormat ? raw / 100 : raw, 1);
+        // 출석일: 칼럼 값이 있으면 그대로, 없으면 출석률에서 역산
+        출석일 = !isBlank(row['출석일'])
+          ? toCount(row['출석일'])
+          : 수업일 > 0 ? Math.round(출석률 * 수업일) : 0;
+      } else {
+        // 출석률 칼럼 없음 → 수업일·출석일로 계산
+        출석일 = toCount(row['출석일']);
+        출석률 = Math.min(수업일 > 0 ? 출석일 / 수업일 : 0, 1);
       }
 
       return {
@@ -139,6 +147,50 @@ export function structureAttendanceData(rawData: RawRow[]): StructuredAttendance
       };
     })
     .filter((item) => item.과목명 && item.이름);
+}
+
+// "1. 만족도" 요약 시트에서 과목명 → 구분 매핑을 추출한다.
+// 헤더 행에서 '구분'과 '과목'(띄어쓰기 무시)을 찾고 데이터 행을 읽는다.
+export function extractSubjectCategories(
+  workbook: ExcelJS.Workbook,
+  sheetName: string,
+): Record<string, string> {
+  const worksheet = workbook.getWorksheet(sheetName);
+  if (!worksheet) return {};
+
+  let headerRowNum = -1;
+  let catCol = -1;
+  let subCol = -1;
+
+  worksheet.eachRow((row, rowNumber) => {
+    if (headerRowNum !== -1) return;
+    let foundCat = -1;
+    let foundSub = -1;
+    row.eachCell((cell, colNumber) => {
+      const t = cellText(cell).replace(/\s+/g, '');
+      if (t === '구분') foundCat = colNumber;
+      if (t === '과목' || t === '과목명') foundSub = colNumber;
+    });
+    if (foundCat !== -1 && foundSub !== -1) {
+      headerRowNum = rowNumber;
+      catCol = foundCat;
+      subCol = foundSub;
+    }
+  });
+
+  if (headerRowNum === -1) return {};
+
+  const result: Record<string, string> = {};
+  let currentCat = '';
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= headerRowNum) return;
+    const cat = cellText(row.getCell(catCol)).trim();
+    const sub = cellText(row.getCell(subCol)).trim();
+    if (cat) currentCat = cat;
+    if (sub && sub !== '계' && currentCat) result[sub] = currentCat;
+  });
+
+  return result;
 }
 
 export function createDefaultCompletionRates(

@@ -1,4 +1,5 @@
 import type { AttendanceAnalysis } from '../types/analysis';
+import { findCategory } from '../lib/subject-utils';
 import { DistTable, pct } from './DistTable';
 
 /* ================================================================
@@ -7,9 +8,10 @@ import { DistTable, pct } from './DistTable';
 
 interface AttendanceResultsProps {
   analysis: AttendanceAnalysis | null;
+  subjectCategories?: Record<string, string>;
 }
 
-export function AttendanceResults({ analysis }: AttendanceResultsProps) {
+export function AttendanceResults({ analysis, subjectCategories = {} }: AttendanceResultsProps) {
   if (!analysis) return null;
   const sr = analysis.subjectResults;
   const maxAtt = Math.max(...sr.map((s) => s.평균출석률), 0.01);
@@ -50,9 +52,14 @@ export function AttendanceResults({ analysis }: AttendanceResultsProps) {
               </tr>
             </thead>
             <tbody>
-              {sr.map((item) => (
+              {sr.map((item) => {
+                const cat = findCategory(item.과목명, subjectCategories);
+                return (
                 <tr key={item.과목명}>
-                  <td>{item.과목명}</td>
+                  <td>
+                    {cat && <span className="category-badge">{cat}</span>}
+                    {item.과목명}
+                  </td>
                   <td>{item.수강인원}</td>
                   <td>
                     {pct(item.평균출석률)}
@@ -64,7 +71,8 @@ export function AttendanceResults({ analysis }: AttendanceResultsProps) {
                   <td>{item.수료인원}</td>
                   <td className="sum">{pct(item.수료율)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -80,6 +88,7 @@ export function AttendanceResults({ analysis }: AttendanceResultsProps) {
         title="연령 분포"
         dist={analysis.ageDistribution}
         denomLabel={`등록 건수 ${analysis.totalStudents}건 기준`}
+        showTotal
       />
     </div>
   );

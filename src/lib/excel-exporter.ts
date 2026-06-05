@@ -2,6 +2,7 @@ import type ExcelJS from 'exceljs';
 import type { AttendanceAnalysis, SatisfactionAnalysis } from '../types/analysis';
 import { regionMapping } from './satisfaction-analyzer';
 import { AGE_KEYS, JOB_KEYS, createEmptyQuestionDistribution } from './constants';
+import { findCategory } from './subject-utils';
 
 /* ================================================================
    Excel 내보내기 — 4개 시트  (analyzer.html:586-709)
@@ -20,20 +21,51 @@ export async function generateCombinedExcel(
   // ── Sheet 1: 수강생 정보 분석 (출석 결과 있을 때만) ──
   if (attendanceResults) {
     const sheet = workbook.addWorksheet('수강생 정보 분석');
-    sheet.getColumn(1).width = 30;
-    [2, 3, 4, 5].forEach((c) => {
-      sheet.getColumn(c).width = c === 3 || c === 5 ? 14 : 12;
+    sheet.getColumn(1).width = 16;
+    sheet.getColumn(2).width = 30;
+    [3, 4, 5, 6].forEach((c) => {
+      sheet.getColumn(c).width = c === 4 || c === 6 ? 14 : 12;
     });
 
     boldRow(sheet.addRow(['■ 과목별 분석']));
-    boldRow(sheet.addRow(['과목명', '수강인원', '평균출석률(%)', '수료인원', '수료율(%)']));
+    boldRow(sheet.addRow(['구분', '과목명', '수강인원', '평균출석률(%)', '수료인원', '수료율(%)']));
     attendanceResults.subjectResults.forEach((item) => {
       sheet.addRow([
+        findCategory(item.과목명, satisfactionResults.subjectCategories),
         item.과목명,
         item.수강인원,
         Number((item.평균출석률 * 100).toFixed(1)),
         item.수료인원,
         Number((item.수료율 * 100).toFixed(1)),
+      ]);
+    });
+
+    // 구분별 집계 표
+    const categoryStats: Record<
+      string,
+      { 과목수: number; 수강인원: number; 출석률가중합: number; 수료인원: number; 수료율가중합: number }
+    > = {};
+    attendanceResults.subjectResults.forEach((item) => {
+      const cat = findCategory(item.과목명, satisfactionResults.subjectCategories) || '미분류';
+      if (!categoryStats[cat])
+        categoryStats[cat] = { 과목수: 0, 수강인원: 0, 출석률가중합: 0, 수료인원: 0, 수료율가중합: 0 };
+      categoryStats[cat].과목수++;
+      categoryStats[cat].수강인원 += item.수강인원;
+      categoryStats[cat].출석률가중합 += item.평균출석률 * item.수강인원;
+      categoryStats[cat].수료인원 += item.수료인원;
+      categoryStats[cat].수료율가중합 += item.수료율 * item.수강인원;
+    });
+    sheet.addRow([]);
+    boldRow(sheet.addRow(['■ 구분별 분석']));
+    boldRow(sheet.addRow(['구분', '과목수', '수강인원', '평균출석률(%)', '수료인원', '수료율(%)']));
+    Object.entries(categoryStats).forEach(([cat, s]) => {
+      sheet.addRow([
+        cat,
+        s.과목수,
+        s.수강인원,
+        Number((s.수강인원 > 0 ? (s.출석률가중합 / s.수강인원) * 100 : 0).toFixed(1)),
+        s.수료인원,
+        Number((s.수강인원 > 0 ? (s.수료율가중합 / s.수강인원) * 100 : 0).toFixed(1)),
       ]);
     });
 
@@ -161,13 +193,14 @@ export async function generateCombinedExcel(
     ).filter((q) => q !== '전체');
     sheet.getColumn(1).width = 28;
 
-    boldRow(sheet.addRow(['과목명', '전체', ...questions]));
+    boldRow(sheet.addRow(['구분', '과목명', '전체', ...questions]));
     satisfactionSubjects.forEach((subject) => {
-      const scores = satisfactionResults.satisfactionAverages[subject].scores;
+      const avg = satisfactionResults.satisfactionAverages[subject];
       sheet.addRow([
+        avg.구분 ?? '',
         subject,
-        Number(scores['전체']) || 0,
-        ...questions.map((q) => Number(scores[q]) || 0),
+        Number(avg.scores['전체']) || 0,
+        ...questions.map((q) => Number(avg.scores[q]) || 0),
       ]);
     });
   }

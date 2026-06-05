@@ -216,6 +216,14 @@ tbody tr.total td { font-weight: 800; background: var(--accent-soft); }
 }
 .switch input:checked ~ .switch-track::after { transform: translateX(14px); }
 
+.category-badge {
+  display: inline-block; vertical-align: middle;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .01em;
+  padding: 2px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  white-space: nowrap; margin-right: 6px; flex: none;
+}
+
 .empty { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
 .footnote { margin-top: 30px; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.7; }
 @media (max-width: 560px) {

@@ -1,5 +1,6 @@
 import type { RawRow, SatisfactionAnalysis } from '../types/analysis';
 import { MAX_ROWS, createEmptyQuestionDistribution } from './constants';
+import { findCategory } from './subject-utils';
 
 /* ================================================================
    만족도 분석  (analyzer.html:421-581)
@@ -143,7 +144,10 @@ const satisfactionQuestions = [
   '체감 만족도',
 ];
 
-export function analyzeSatisfactionData(rawData: RawRow[]): SatisfactionAnalysis {
+export function analyzeSatisfactionData(
+  rawData: RawRow[],
+  externalCategories: Record<string, string> = {},
+): SatisfactionAnalysis {
   if (!rawData || rawData.length === 0) throw new Error('분석할 데이터가 없습니다.');
   if (rawData.length > MAX_ROWS)
     throw new Error(
@@ -156,6 +160,7 @@ export function analyzeSatisfactionData(rawData: RawRow[]): SatisfactionAnalysis
   const columnIndexes = {
     serialNumber: headers.findIndex((h) => h.includes('연번')),
     subject: headers.findIndex((h) => h.includes('과목명')),
+    category: headers.findIndex((h) => h.includes('구분')),
     gender: headers.findIndex((h) => /성별/i.test(h)),
     region: headers.findIndex((h) => /지역|거주|주소/i.test(h)),
     age: headers.findIndex((h) => /연령|나이/i.test(h)),
@@ -173,11 +178,19 @@ export function analyzeSatisfactionData(rawData: RawRow[]): SatisfactionAnalysis
 
   // ── 과목별 그룹핑 (병합 셀 forward-fill) ──────────────────────────────
   const subjectGroups: Record<string, RawRow[]> = {};
+  const categoryForSubject: Record<string, string> = {};
   let currentSubject: string | null = null;
+  let currentCategory: string | null = null;
   dataRows.forEach((row) => {
+    if (columnIndexes.category !== -1) {
+      const catVal = row[headers[columnIndexes.category]];
+      if (catVal && catVal.toString().trim() !== '')
+        currentCategory = catVal.toString().trim();
+    }
     let subject = row[headers[columnIndexes.subject]];
     if (subject && subject.toString().trim() !== '') {
       currentSubject = subject.toString().trim();
+      if (currentCategory) categoryForSubject[currentSubject] = currentCategory;
     } else if (currentSubject) {
       subject = currentSubject;
     }
@@ -203,7 +216,8 @@ export function analyzeSatisfactionData(rawData: RawRow[]): SatisfactionAnalysis
       job: { 직장인: 0, 자영업: 0, 농어업축산임업: 0, 주부: 0, 학생: 0, 기타: 0 },
     };
     satisfactionDistribution[subject] = { subject, questions: {} };
-    satisfactionAverages[subject] = { subject, scores: {} };
+    const 구분 = categoryForSubject[subject] || findCategory(subject, externalCategories);
+    satisfactionAverages[subject] = { subject, 구분, scores: {} };
 
     rows.forEach((row) => {
       const gender = normalizeText(row[headers[columnIndexes.gender]], 'gender');
@@ -253,10 +267,19 @@ export function analyzeSatisfactionData(rawData: RawRow[]): SatisfactionAnalysis
         : 0;
   }
 
+  // 원본데이터 시트의 과목명을 키로 하는 구분 맵
+  // (외부 카테고리에 없는 경우 퍼지 매칭으로 보완)
+  const subjectCategories: Record<string, string> = {};
+  for (const subject of Object.keys(subjectGroups)) {
+    const cat = categoryForSubject[subject] || findCategory(subject, externalCategories);
+    if (cat) subjectCategories[subject] = cat;
+  }
+
   return {
     respondentCharacteristics,
     satisfactionDistribution,
     satisfactionAverages,
+    subjectCategories,
     totalSubjects: Object.keys(subjectGroups).length,
     totalResponses: dataRows.length,
   };

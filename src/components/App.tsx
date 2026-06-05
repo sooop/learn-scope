@@ -5,6 +5,7 @@ import {
   extractSheetData,
   structureAttendanceData,
   createDefaultCompletionRates,
+  extractSubjectCategories,
 } from '../lib/excel-parser';
 import { analyzeData } from '../lib/attendance-analyzer';
 import { analyzeSatisfactionData } from '../lib/satisfaction-analyzer';
@@ -120,7 +121,13 @@ export function App() {
       const defaultRates = createDefaultCompletionRates(structuredAttendance);
 
       setLoadingStep('데이터 분석 중...');
-      const satisfactionAnalysis = analyzeSatisfactionData(satisfactionRawData);
+      const summarySheetName = workbook.worksheets.find((ws) =>
+        /^(\d+\.\s*)?만족도$/.test(ws.name.trim()),
+      )?.name;
+      const externalCategories = summarySheetName
+        ? extractSubjectCategories(workbook, summarySheetName)
+        : {};
+      const satisfactionAnalysis = analyzeSatisfactionData(satisfactionRawData, externalCategories);
 
       // 출석 분석은 setOriginalAttendanceData/setSubjectCompletionRates 설정 후
       // useEffect(66~70)가 단 1회 실행하므로 여기서 직접 호출하지 않는다.
@@ -298,7 +305,10 @@ export function App() {
           </div>
 
           {activeTab === 'attendance' ? (
-            <AttendanceResults analysis={attendanceResult} />
+            <AttendanceResults
+              analysis={attendanceResult}
+              subjectCategories={satisfactionResult?.subjectCategories}
+            />
           ) : (
             <SatisfactionResults results={satisfactionResult} />
           )}

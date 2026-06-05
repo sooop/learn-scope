@@ -58,7 +58,10 @@ export function SatisfactionResults({ results }: SatisfactionResultsProps) {
             <tbody>
               {avgList.map((s) => (
                 <tr key={s.subject}>
-                  <td>{s.subject}</td>
+                  <td>
+                    {s.구분 && <span className="category-badge">{s.구분}</span>}
+                    {s.subject}
+                  </td>
                   <td className="sum">{s.scores['전체']}</td>
                   {questions.map((q) => (
                     <td key={q}>{s.scores[q]}</td>
@@ -91,9 +94,13 @@ export function SatisfactionResults({ results }: SatisfactionResultsProps) {
             <tbody>
               {Object.values(results.respondentCharacteristics).map((rc) => {
                 const total = rc.gender.남성 + rc.gender.여성;
+                const cat = results.subjectCategories[rc.subject];
                 return (
                   <tr key={rc.subject}>
-                    <td>{rc.subject}</td>
+                    <td>
+                      {cat && <span className="category-badge">{cat}</span>}
+                      {rc.subject}
+                    </td>
                     <td>{rc.gender.남성}</td>
                     <td>{rc.gender.여성}</td>
                     {AGE_KEYS.map((k) => (

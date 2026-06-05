@@ -5,29 +5,13 @@ import { MAX_ROWS, AGE_KEYS, AGE_KEYS_SPLIT } from './constants';
    출석 분석  (analyzer.html:315-416)
    ================================================================ */
 
-function calculateAge(birthDate: string | number | unknown): number | null {
-  if (!birthDate) return null;
-  const dateStr = String(birthDate).trim();
-  let parts: string[];
-
-  if (dateStr.includes('.')) parts = dateStr.split('.');
-  else if (dateStr.includes('-')) parts = dateStr.split('-');
-  else return null;
-
-  const [year, month, day] = parts.map(Number);
+function ageFromParts(year: number, month: number, day: number): number | null {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
-
   const birth = new Date(year, month - 1, day);
-  if (
-    birth.getFullYear() !== year ||
-    birth.getMonth() !== month - 1 ||
-    birth.getDate() !== day
-  )
+  if (birth.getFullYear() !== year || birth.getMonth() !== month - 1 || birth.getDate() !== day)
     return null;
-
   const today = new Date();
   if (birth > today) return null;
-
   let age = today.getFullYear() - birth.getFullYear();
   if (
     today.getMonth() < birth.getMonth() ||
@@ -35,6 +19,39 @@ function calculateAge(birthDate: string | number | unknown): number | null {
   )
     age--;
   return age;
+}
+
+function calculateAge(birthDate: string | number | unknown): number | null {
+  if (!birthDate) return null;
+
+  // ── 숫자 입력: 엑셀 시퀀스 또는 yyyymmdd 정수 ──────────────────────────
+  if (typeof birthDate === 'number') {
+    if (birthDate >= 19000101) {
+      // yyyymmdd 정수 (예: 19780703)
+      return ageFromParts(
+        Math.floor(birthDate / 10000),
+        Math.floor((birthDate % 10000) / 100),
+        birthDate % 100,
+      );
+    }
+    if (birthDate > 0) {
+      // 엑셀 날짜 시퀀스 (serial 25569 = 1970-01-01)
+      const d = new Date(Math.round((birthDate - 25569) * 86400000));
+      return ageFromParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+    }
+    return null;
+  }
+
+  // ── 문자열 입력 ──────────────────────────────────────────────────────────
+  const s = String(birthDate).trim();
+  let parts: string[];
+  if (s.includes('.')) parts = s.split('.');
+  else if (s.includes('-')) parts = s.split('-');
+  else if (/^\d{8}$/.test(s)) parts = [s.slice(0, 4), s.slice(4, 6), s.slice(6, 8)]; // yyyymmdd 문자열
+  else return null;
+
+  const [y, m, d] = parts.map(Number);
+  return ageFromParts(y, m, d);
 }
 
 function getAgeGroup(age: number, splitSixties = false): string {
@@ -66,7 +83,7 @@ export function analyzeData(
       subjectStats[item.과목명] = { 수강인원: 0, 출석률합계: 0, 수료인원: 0 };
     subjectStats[item.과목명].수강인원++;
     subjectStats[item.과목명].출석률합계 += item.출석률;
-    const completionRate = subjectCompletionRates[item.과목명] || 0.7;
+    const completionRate = subjectCompletionRates[item.과목명] ?? 0.7;
     if (item.출석률 >= completionRate) subjectStats[item.과목명].수료인원++;
   });
 
@@ -144,9 +161,10 @@ export function analyzeData(
   // ── 4. 연령 분포 (splitSixties=true 시 60대/70대 이상으로 분리) ───────────
   const ageKeys = splitSixties ? AGE_KEYS_SPLIT : AGE_KEYS;
   const ageStats: Record<string, number> = Object.fromEntries(ageKeys.map((k) => [k, 0]));
+  let unknownAge = 0;
   data.forEach((item) => {
     const age = calculateAge(item.생년월일);
-    if (age === null) return;
+    if (age === null) { unknownAge++; return; }
     ageStats[getAgeGroup(age, splitSixties)]++;
   });
   const ageDistribution: AttendanceAnalysis['ageDistribution'] = {};
@@ -156,6 +174,12 @@ export function analyzeData(
       비율: totalStudents > 0 ? (count / totalStudents) * 100 : 0,
     };
   });
+  if (unknownAge > 0) {
+    ageDistribution['생년월일 미확인'] = {
+      명수: unknownAge,
+      비율: totalStudents > 0 ? (unknownAge / totalStudents) * 100 : 0,
+    };
+  }
 
   return {
     subjectResults,

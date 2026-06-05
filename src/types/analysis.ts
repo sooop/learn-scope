@@ -47,6 +47,7 @@ export type SatisfactionScores = Record<string, SatisfactionScoreValue>;
 
 export interface SubjectSatisfaction {
   subject: string;
+  구분?: string;
   scores: SatisfactionScores;
 }
 
@@ -73,6 +74,7 @@ export interface SatisfactionAnalysis {
     { subject: string; questions: Record<string, QuestionDistribution> }
   >;
   satisfactionAverages: Record<string, SubjectSatisfaction>;
+  subjectCategories: Record<string, string>; // 과목명 → 구분
   totalSubjects: number;
   totalResponses: number;
 }
