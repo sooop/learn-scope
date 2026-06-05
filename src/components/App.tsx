@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import type { AttendanceAnalysis, SatisfactionAnalysis } from '../types/analysis';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import type { AttendanceAnalysis, SatisfactionAnalysis, Diagnostic, SubjectMerge } from '../types/analysis';
 import type { StructuredAttendanceItem, RawRow } from '../types/analysis';
 import {
   extractSheetData,
@@ -10,9 +10,12 @@ import {
 import { analyzeData } from '../lib/attendance-analyzer';
 import { analyzeSatisfactionData } from '../lib/satisfaction-analyzer';
 import { generateCombinedExcel } from '../lib/excel-exporter';
+import { clusterSubjects } from '../lib/subject-cluster';
 import { AttendanceResults } from './AttendanceResults';
 import { SatisfactionResults } from './SatisfactionResults';
 import { CompletionRateModal } from './CompletionRateModal';
+import { DiagnosticsPanel } from './DiagnosticsPanel';
+import { DataPreview } from './DataPreview';
 import { Ic } from './icons';
 
 /* ================================================================
@@ -38,9 +41,14 @@ export function App() {
   >(null);
   const [subjectCompletionRates, setSubjectCompletionRates] = useState<Record<string, number>>({});
 
+  const [parseDiagnostics, setParseDiagnostics] = useState<Diagnostic[]>([]);
+  const [satisfactionRawData, setSatisfactionRawData] = useState<RawRow[] | null>(null);
+  const [parsedAttendanceRows, setParsedAttendanceRows] = useState<number>(0);
+  const [attendanceMergesState, setAttendanceMergesState] = useState<SubjectMerge[]>([]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'attendance' | 'satisfaction'>('attendance');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'satisfaction' | 'preview'>('attendance');
   const [showModal, setShowModal] = useState(false);
   // 연령 분포 60대/70대 구분 토글 (출석·수료 분석의 연령 분포에만 적용)
   const [splitSixties, setSplitSixties] = useState(true);
@@ -77,6 +85,9 @@ export function App() {
     setAttendanceResult(null);
     setSatisfactionResult(null);
     setOriginalAttendanceData(null);
+    setParseDiagnostics([]);
+    setSatisfactionRawData(null);
+    setParsedAttendanceRows(0);
 
     try {
       const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -110,14 +121,24 @@ export function App() {
       setLoadingStep('출석 데이터 추출 중...');
       const attendanceRawData: RawRow[] = extractSheetData(workbook, attendanceSheetName, '연번');
       setLoadingStep('만족도 데이터 추출 중...');
-      const satisfactionRawData: RawRow[] = extractSheetData(
+      const satRawData: RawRow[] = extractSheetData(
         workbook,
         satisfactionSheetName,
         '연번',
       );
 
       setLoadingStep('데이터 구조화 중...');
-      const structuredAttendance = structureAttendanceData(attendanceRawData);
+      // structureAttendanceData는 이제 { items, diagnostics }를 반환
+      const { items: structuredItems, diagnostics: parseDiag } =
+        structureAttendanceData(attendanceRawData);
+
+      // 출석 과목명 canonical화 — 오타·띄어쓰기 변형을 하나의 키로 통합
+      const rawSubjectNames = structuredItems.map((i) => i.과목명).filter(Boolean);
+      const { canonicalOf: attendanceCanonical, merges: attendanceMerges } = clusterSubjects(rawSubjectNames);
+      const structuredAttendance = structuredItems.map((i) => ({
+        ...i,
+        과목명: attendanceCanonical[i.과목명] ?? i.과목명,
+      }));
       const defaultRates = createDefaultCompletionRates(structuredAttendance);
 
       setLoadingStep('데이터 분석 중...');
@@ -127,10 +148,16 @@ export function App() {
       const externalCategories = summarySheetName
         ? extractSubjectCategories(workbook, summarySheetName)
         : {};
-      const satisfactionAnalysis = analyzeSatisfactionData(satisfactionRawData, externalCategories);
+      const satisfactionAnalysis = analyzeSatisfactionData(satRawData, externalCategories);
+
+      // 진단 + 원본 데이터 상태 업데이트
+      setParseDiagnostics(parseDiag);
+      setSatisfactionRawData(satRawData);
+      setParsedAttendanceRows(attendanceRawData.length);
+      setAttendanceMergesState(attendanceMerges);
 
       // 출석 분석은 setOriginalAttendanceData/setSubjectCompletionRates 설정 후
-      // useEffect(66~70)가 단 1회 실행하므로 여기서 직접 호출하지 않는다.
+      // useEffect가 단 1회 실행하므로 여기서 직접 호출하지 않는다.
       setOriginalAttendanceData(structuredAttendance);
       setSubjectCompletionRates(defaultRates);
       setSatisfactionResult(satisfactionAnalysis);
@@ -149,7 +176,18 @@ export function App() {
     try {
       const ExcelJS = window.ExcelJS;
       if (!ExcelJS) throw new Error('ExcelJS 라이브러리를 불러오지 못했습니다.');
-      const url = await generateCombinedExcel(satisfactionResult, ExcelJS, attendanceResult);
+      const url = await generateCombinedExcel(
+        satisfactionResult,
+        ExcelJS,
+        attendanceResult,
+        originalAttendanceData,
+        allDiagnostics,
+        {
+          subjectCompletionRates,
+          parsedAttendanceRows,
+          parsedSatisfactionRows: satisfactionRawData?.length,
+        },
+      );
       if (url) {
         const link = document.createElement('a');
         link.href = url;
@@ -179,9 +217,23 @@ export function App() {
     setSatisfactionResult(null);
     setOriginalAttendanceData(null);
     setSubjectCompletionRates({});
+    setParseDiagnostics([]);
+    setSatisfactionRawData(null);
+    setParsedAttendanceRows(0);
+    setAttendanceMergesState([]);
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
+
+  // 파싱 + 분석 진단을 합산 (토글/수료기준 변경 시 분석 진단만 자동 갱신됨)
+  const allDiagnostics = useMemo(
+    () => [
+      ...parseDiagnostics,
+      ...(attendanceResult?.diagnostics ?? []),
+      ...(satisfactionResult?.diagnostics ?? []),
+    ],
+    [parseDiagnostics, attendanceResult?.diagnostics, satisfactionResult?.diagnostics],
+  );
 
   const hasResult = attendanceResult || satisfactionResult;
 
@@ -192,7 +244,7 @@ export function App() {
         <h1 className="title">가까이배움터 강좌 운영결과 분석기</h1>
         <p className="subtitle">
           출석현황과 만족도 설문 원본이 담긴 엑셀 파일을 올리면, 출석·수료 분석과 만족도 집계를
-          자동으로 수행하고 4개 시트로 구성된 결과 파일을 내려받을 수 있습니다.
+          자동으로 수행하고 5개 시트로 구성된 결과 파일을 내려받을 수 있습니다.
         </p>
         <div className="rule" />
       </div>
@@ -279,9 +331,11 @@ export function App() {
               disabled={isDownloading}
             >
               {Ic.download}
-              {isDownloading ? '생성 중...' : '결과 파일 (4시트) 다운로드'}
+              {isDownloading ? '생성 중...' : '결과 파일 (5시트) 다운로드'}
             </button>
           </div>
+
+          <DiagnosticsPanel diagnostics={allDiagnostics} />
 
           <div className="tabs">
             <button
@@ -302,15 +356,24 @@ export function App() {
                 <span className="cnt">{satisfactionResult.totalSubjects}</span>
               )}
             </button>
+            <button
+              className={'tab' + (activeTab === 'preview' ? ' active' : '')}
+              onClick={() => setActiveTab('preview')}
+            >
+              원본 데이터
+            </button>
           </div>
 
           {activeTab === 'attendance' ? (
             <AttendanceResults
               analysis={attendanceResult}
               subjectCategories={satisfactionResult?.subjectCategories}
+              merges={attendanceMergesState}
             />
-          ) : (
+          ) : activeTab === 'satisfaction' ? (
             <SatisfactionResults results={satisfactionResult} />
+          ) : (
+            <DataPreview attendance={originalAttendanceData} satisfactionRaw={satisfactionRawData} />
           )}
         </>
       )}
@@ -328,7 +391,7 @@ export function App() {
       <div className="footnote">
         모든 분석은 브라우저 내에서만 처리되며 파일은 외부로 전송되지 않습니다.
         <br />
-        결과 파일 시트: 수강생 정보 분석 · 응답자 특성 · 객관식 응답 집계 · 평균만족도
+        결과 파일 시트: 수강생 정보 분석 · 응답자 특성 · 객관식 응답 집계 · 평균만족도 · 검증
       </div>
     </div>
   );

@@ -14,6 +14,12 @@ export interface StructuredAttendanceItem {
   수료여부: unknown;
 }
 
+// structureAttendanceData 반환 타입 (diagnostics 포함)
+export interface StructuredAttendanceResult {
+  items: StructuredAttendanceItem[];
+  diagnostics: Diagnostic[];
+}
+
 export interface SubjectResult {
   과목명: string;
   수강인원: number;
@@ -27,14 +33,36 @@ export interface DistributionEntry {
   비율: number; // 0~100 퍼센트값 (표시 시 추가 변환 불필요)
 }
 
+// ── 진단 타입 ─────────────────────────────────────────────────────
+export type DiagnosticSeverity = 'warning' | 'info';
+export type DiagnosticCategory =
+  | 'skipped-row'
+  | 'normalize-failed'
+  | 'rate-format'
+  | 'column-fallback'
+  | 'integrity'
+  | 'bucket-mismatch'
+  | 'value-coercion';
+
+export interface Diagnostic {
+  severity: DiagnosticSeverity;
+  category: DiagnosticCategory;
+  code: string;        // 안정 식별자, 예: 'B1-rate-format'
+  message: string;     // 한국어 사용자 메시지
+  count: number;
+  samples?: string[];  // 원문/값 샘플 (최대 5개)
+}
+
 export interface AttendanceAnalysis {
   subjectResults: SubjectResult[];
-  genderDistribution: Record<'여성' | '남성' | '합계', DistributionEntry>;
+  // 성별 키: '여성'|'남성'|'합계' + 미상 존재 시 '기타/미상' 동적 추가
+  genderDistribution: Record<string, DistributionEntry>;
   courseCountDistribution: Record<'1강좌' | '2강좌' | '3강좌 이상', DistributionEntry>;
   // splitSixties 토글에 따라 키가 '60대 이상' 또는 '60대'+'70대 이상'으로 달라짐
   ageDistribution: Record<string, DistributionEntry>;
   totalStudents: number;
   uniqueStudents: number;
+  diagnostics: Diagnostic[];
 }
 
 /* ================================================================
@@ -77,6 +105,17 @@ export interface SatisfactionAnalysis {
   subjectCategories: Record<string, string>; // 과목명 → 구분
   totalSubjects: number;
   totalResponses: number;
+  diagnostics: Diagnostic[];
+  subjectMerges?: SubjectMerge[];
+}
+
+/* ================================================================
+   퍼지 클러스터링 타입
+   ================================================================ */
+
+export interface SubjectMerge {
+  canonical: string;
+  members: string[];
 }
 
 /* ================================================================

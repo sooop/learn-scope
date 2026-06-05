@@ -1,4 +1,4 @@
-import type { SatisfactionAnalysis } from '../types/analysis';
+import type { SatisfactionAnalysis, SubjectMerge } from '../types/analysis';
 import { AGE_KEYS } from '../lib/constants';
 
 /* ================================================================
@@ -23,8 +23,33 @@ export function SatisfactionResults({ results }: SatisfactionResultsProps) {
     ? overallAll.reduce((a, b) => a + b, 0) / overallAll.length
     : 0;
 
+  const subjectMerges: SubjectMerge[] | undefined = results.subjectMerges;
+
   return (
     <div className="panel">
+      {subjectMerges && subjectMerges.length > 0 && (
+        <div
+          className="merge-notice"
+          style={{
+            background: 'var(--c-surface, #f5f5f4)',
+            border: '1px solid var(--c-border, #d6d3d1)',
+            borderRadius: '6px',
+            padding: '10px 14px',
+            marginBottom: '16px',
+            fontSize: '0.875rem',
+          }}
+        >
+          <strong>유사 표기 {subjectMerges.length}건이 통합되었습니다</strong>
+          <ul style={{ margin: '6px 0 0', paddingLeft: '1.25rem' }}>
+            {subjectMerges.map((m) => (
+              <li key={m.canonical}>
+                <strong>{m.canonical}</strong> ←{' '}
+                {m.members.filter((mb) => mb !== m.canonical).join(', ')}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="stat-row">
         <div className="stat">
           <div className="n">{results.totalSubjects}</div>

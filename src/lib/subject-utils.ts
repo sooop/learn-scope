@@ -1,6 +1,7 @@
 /* ================================================================
    과목명 퍼지 매칭 — 시트 간 띄어쓰기·오타 차이 흡수
    ================================================================ */
+import { fuzzyDistance, decomposeHangul } from './jamo';
 
 export function normalizeForMatch(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, '').replace(/[^\w가-힣]/g, '');
@@ -39,5 +40,21 @@ export function findCategory(subject: string, categories: Record<string, string>
       best = v;
     }
   }
-  return best;
+  if (best) return best;
+
+  // 4단계: 자모 단위 가중 OSA — 전위/인접 키 오타 흡수
+  let fuzzyBest = '',
+    fuzzyBestDist = Infinity;
+  for (const [k, v] of Object.entries(categories)) {
+    const d = fuzzyDistance(norm, normalizeForMatch(k));
+    const maxLen = Math.max(
+      decomposeHangul(norm).length,
+      decomposeHangul(normalizeForMatch(k)).length,
+    );
+    if ((d < 1.5 || (maxLen > 0 && d / maxLen <= 0.30)) && d < fuzzyBestDist) {
+      fuzzyBestDist = d;
+      fuzzyBest = v;
+    }
+  }
+  return fuzzyBest;
 }

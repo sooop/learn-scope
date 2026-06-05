@@ -1,4 +1,4 @@
-import type { AttendanceAnalysis } from '../types/analysis';
+import type { AttendanceAnalysis, SubjectMerge } from '../types/analysis';
 import { findCategory } from '../lib/subject-utils';
 import { DistTable, pct } from './DistTable';
 
@@ -9,14 +9,44 @@ import { DistTable, pct } from './DistTable';
 interface AttendanceResultsProps {
   analysis: AttendanceAnalysis | null;
   subjectCategories?: Record<string, string>;
+  merges?: SubjectMerge[];
 }
 
-export function AttendanceResults({ analysis, subjectCategories = {} }: AttendanceResultsProps) {
+export function AttendanceResults({ analysis, subjectCategories = {}, merges }: AttendanceResultsProps) {
   if (!analysis) return null;
   const sr = analysis.subjectResults;
   const maxAtt = Math.max(...sr.map((s) => s.평균출석률), 0.01);
+
+  // 과목명 → 병합 정보 역매핑 (툴팁용)
+  const mergeMap = Object.fromEntries(
+    (merges ?? []).flatMap((m) => m.members.map((mb) => [mb, m])),
+  );
+
   return (
     <div className="panel">
+      {merges && merges.length > 0 && (
+        <div
+          className="merge-notice"
+          style={{
+            background: 'var(--c-surface, #f5f5f4)',
+            border: '1px solid var(--c-border, #d6d3d1)',
+            borderRadius: '6px',
+            padding: '10px 14px',
+            marginBottom: '16px',
+            fontSize: '0.875rem',
+          }}
+        >
+          <strong>유사 표기 {merges.length}건이 통합되었습니다</strong>
+          <ul style={{ margin: '6px 0 0', paddingLeft: '1.25rem' }}>
+            {merges.map((m) => (
+              <li key={m.canonical}>
+                <strong>{m.canonical}</strong> ←{' '}
+                {m.members.filter((mb) => mb !== m.canonical).join(', ')}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="stat-row">
         <div className="stat">
           <div className="n">{analysis.totalStudents}</div>
@@ -56,7 +86,13 @@ export function AttendanceResults({ analysis, subjectCategories = {} }: Attendan
                 const cat = findCategory(item.과목명, subjectCategories);
                 return (
                 <tr key={item.과목명}>
-                  <td>
+                  <td
+                    title={
+                      mergeMap[item.과목명]?.members.filter((mb) => mb !== item.과목명).length
+                        ? `통합: ${mergeMap[item.과목명].members.join(', ')}`
+                        : undefined
+                    }
+                  >
                     {cat && <span className="category-badge">{cat}</span>}
                     {item.과목명}
                   </td>
@@ -78,16 +114,24 @@ export function AttendanceResults({ analysis, subjectCategories = {} }: Attendan
         </div>
       </div>
 
-      <DistTable title="성별 분포" dist={analysis.genderDistribution} />
+      <DistTable
+        title="성별 분포"
+        dist={analysis.genderDistribution}
+        expectedTotal={analysis.totalStudents}
+        unclassifiedLabel="성별 미상"
+        sumExcludeKeys={['합계']}
+      />
       <DistTable
         title="수강 강좌수별 분포"
         dist={analysis.courseCountDistribution}
         denomLabel={`고유 수강생 ${analysis.uniqueStudents}명 기준`}
+        expectedTotal={analysis.uniqueStudents}
       />
       <DistTable
         title="연령 분포"
         dist={analysis.ageDistribution}
         denomLabel={`등록 건수 ${analysis.totalStudents}건 기준`}
+        expectedTotal={analysis.totalStudents}
         showTotal
       />
     </div>
